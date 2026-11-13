@@ -3,7 +3,7 @@ package config_test
 import (
 	"testing"
 
-	"calliopoc/internal/config"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/config"
 )
 
 func TestLoad(t *testing.T) {

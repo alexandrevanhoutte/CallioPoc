@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"calliopoc/internal/httpapi"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/httpapi"
 )
 
 func TestRun(t *testing.T) {
