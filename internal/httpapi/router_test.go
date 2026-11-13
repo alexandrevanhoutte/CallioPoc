@@ -7,7 +7,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"calliopoc/internal/httpapi"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/httpapi"
 )
 
 func TestRouter(t *testing.T) {

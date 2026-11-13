@@ -7,8 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"calliopoc/internal/config"
-	"calliopoc/internal/httpapi"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/config"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/httpapi"
 )
 
 func main() {
