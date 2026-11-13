@@ -1,3 +1,3 @@
-module github.com/alexandrevanhoutte/CallioPoc
+module calliopoc
 
 go 1.23
