@@ -67,7 +67,6 @@ progress::-moz-progress-bar { background: var(--accent); border-radius: 99px; }
 .transcript-panel { display: flex; flex-direction: column; }
 .transcript-list { display: flex; flex: 1; min-height: 220px; max-height: 430px; overflow-y: auto; flex-direction: column; gap: 12px; padding: 10px 4px 14px; }
 .transcript-segment { max-width: 88%; align-self: flex-start; border: 1px solid #34455e; background: #222e43; padding: 12px 15px; border-radius: 12px; overflow-wrap: anywhere; }
-.transcript-segment:has(strong:first-child) { min-width: 0; }
 .transcript-segment strong { font-size: .79rem; color: var(--accent); }
 .transcript-segment p { margin: 4px 0 0; font-size: .92rem; }
 .transcript-partial { opacity: .65; }

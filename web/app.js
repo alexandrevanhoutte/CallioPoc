@@ -117,7 +117,6 @@ async function stopSession(error) {
     try { await current.player.disable(); } catch (e) { error ??= e; }
   } finally {
     micStatus.textContent = error ? `Error: ${readableError(error)}` : "Stopped";
-    if (error) { setup.online = false; void setup.check(); }
     socketStatus.textContent = error ? "Disconnected (error)" : "Disconnected";
     aiStatus.textContent = error ? readableError(error) : "Idle";
     transcript.finish();
