@@ -17,7 +17,9 @@ const (
 type turnState struct {
 	id      uint64
 	active  bool
-	pending []realtime.Event
+	pending     []realtime.Event
+	transcripts transcriptionState
+	history     realtime.Transcript
 }
 
 func (t *turnState) next() (realtime.Event, bool) {
@@ -38,10 +40,24 @@ func (t *turnState) process(content *genai.LiveServerContent) error {
 	}
 	if content.Interrupted {
 		t.pending = []realtime.Event{{
-			Type:   realtime.EventInterrupted,
-			TurnID: t.id,
+			Type: realtime.EventInterrupted, TurnID: t.id,
 		}}
 		t.active = false
+		t.transcripts.interruptAI()
+	}
+	for _, item := range []struct {
+		speaker realtime.Speaker
+		value   *genai.Transcription
+	}{
+		{realtime.SpeakerCaller, content.InputTranscription},
+		{realtime.SpeakerAI, content.OutputTranscription},
+	} {
+		if event, ok := t.transcripts.update(item.speaker, item.value); ok {
+			t.history.Apply(*event.Transcript)
+			t.pending = append(t.pending, event)
+		}
+	}
+	if content.Interrupted {
 		return nil
 	}
 
