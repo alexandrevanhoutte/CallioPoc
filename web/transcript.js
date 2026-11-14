@@ -85,7 +85,7 @@ export class TranscriptView {
   update(event) {
     const segment = this.store.upsert(event);
     if (!segment) return;
-    this.status.textContent = "Live transcript";
+    this.status.textContent = this.store.handoff ? "Handoff requested" : "Live transcript";
     let row = this.rows.get(segment.id);
     if (!row) {
       row = document.createElement("div");
@@ -143,8 +143,8 @@ export class TranscriptView {
   }
 
   finish() {
-    this.status.textContent = this.store.segments.size
-      ? "Conversation ended — transcript retained in this page"
+    this.status.textContent = this.store.segments.size || this.store.handoff
+      ? "Conversation ended — timeline retained in this page"
       : "No transcript received";
   }
 
