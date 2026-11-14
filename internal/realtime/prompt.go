@@ -2,26 +2,39 @@ package realtime
 
 import "fmt"
 
-// GreetingLocale selects only the initial spoken greeting. Subsequent turns
-// follow the caller's language, regardless of this setting.
-type GreetingLocale string
+// Locale is a provider-independent language locale.
+// Zero is invalid; its wire/configuration representation is returned by String.
+type Locale uint8
 
 const (
-	GreetingFrench GreetingLocale = "fr-FR"
-	GreetingEnglish GreetingLocale = "en-US"
-	GreetingKorean GreetingLocale = "ko-KR"
+	LocaleFrench Locale = iota + 1
+	LocaleEnglish
+	LocaleKorean
 )
 
-func NewGreetingLocale(value string) (GreetingLocale, error) {
+func NewLocale(value string) (Locale, error) {
 	switch value {
-	case string(GreetingFrench):
-		return GreetingFrench, nil
-	case string(GreetingEnglish):
-		return GreetingEnglish, nil
-	case string(GreetingKorean):
-		return GreetingKorean, nil
+	case "fr-FR":
+		return LocaleFrench, nil
+	case "en-US":
+		return LocaleEnglish, nil
+	case "ko-KR":
+		return LocaleKorean, nil
 	default:
-		return "", fmt.Errorf("unsupported greeting locale %q: expected fr-FR, en-US or ko-KR", value)
+		return 0, fmt.Errorf("unsupported locale %q: expected fr-FR, en-US or ko-KR", value)
+	}
+}
+
+func (l Locale) String() string {
+	switch l {
+	case LocaleFrench:
+		return "fr-FR"
+	case LocaleEnglish:
+		return "en-US"
+	case LocaleKorean:
+		return "ko-KR"
+	default:
+		return "unknown"
 	}
 }
 
@@ -49,22 +62,22 @@ const ReceptionistInstructions = "You are Callio, an AI receptionist answering i
 
 // GreetingText is deliberately a full, localized utterance: Gemini should
 // speak the exact text instead of inventing a translation.
-func (l GreetingLocale) GreetingText() string {
-	switch l {
-	case GreetingFrench:
+func GreetingText(locale Locale) string {
+	switch locale {
+	case LocaleFrench:
 		return "Bonjour, je suis Callio, l'assistante IA. Comment puis-je vous aider ?"
-	case GreetingEnglish:
+	case LocaleEnglish:
 		return "Hello, I'm Callio, an AI assistant. How can I help you?"
-	case GreetingKorean:
+	case LocaleKorean:
 		return "안녕하세요. 저는 AI 비서 칼리오입니다. 무엇을 도와드릴까요?"
 	default:
 		return ""
 	}
 }
 
-func (l GreetingLocale) OpeningPrompt() string {
+func OpeningPrompt(locale Locale) string {
 	return "A new incoming call has just been answered. Say this greeting aloud exactly once, in its original language, without translating, expanding or adding commentary: " +
-		fmt.Sprintf("%q", l.GreetingText()) +
+		fmt.Sprintf("%q", GreetingText(locale)) +
 		" After the greeting, listen to the caller. For every later reply, speak in the caller's language, even when it differs from the greeting language."
 }
 
