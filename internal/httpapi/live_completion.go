@@ -30,7 +30,7 @@ func (b *liveBridge) touch() {
 	b.lastActivity.Store(time.Now().UnixNano())
 }
 
-func (b *liveBridge) beginFinishing(ctx context.Context, reason string) {
+func (b *liveBridge) beginFinishing(ctx context.Context, reason call.EndReason) {
 	b.finishMu.Lock()
 	if b.lifecycle.State() != call.AIActive || b.finishing.Load() {
 		b.finishMu.Unlock()
@@ -40,8 +40,8 @@ func (b *liveBridge) beginFinishing(ctx context.Context, reason string) {
 	b.finishing.Store(true)
 	generation := b.finishGeneration.Add(1)
 	b.finishMu.Unlock()
-	slog.Info("call completion initiated", "reason", reason)
-	if reason == "idle_timeout" {
+	slog.Info("call completion initiated", "reason", reason.String())
+	if reason == call.EndIdleTimeout {
 		_ = b.sendFinishing(ctx)
 		return
 	}
@@ -67,7 +67,7 @@ func (b *liveBridge) cancelFinishing(ctx context.Context) {
 		return
 	}
 	b.finishing.Store(false)
-	b.finishReason = ""
+	b.finishReason = call.EndUnknown
 	b.finishGeneration.Add(1)
 	b.finishMu.Unlock()
 	slog.Info("natural call completion cancelled by interruption")
@@ -90,7 +90,7 @@ func (b *liveBridge) sendFinishing(ctx context.Context) error {
 	return b.writeJSON(ctx, struct {
 		Type string `json:"type"`
 		Reason string `json:"reason"`
-	}{Type: "call_finishing", Reason: reason})
+	}{Type: "call_finishing", Reason: reason.String()})
 }
 
 // Watch real conversation events, not the stream of silent PCM frames.
@@ -104,7 +104,7 @@ func (b *liveBridge) watchInactivity(ctx context.Context, timeout time.Duration)
 			if b.lifecycle.State() != call.AIActive || b.finishing.Load() || b.aiSpeaking.Load() { continue }
 			last := time.Unix(0, b.lastActivity.Load())
 			if idleExpired(time.Now(), last, timeout, b.lifecycle.State(), b.aiSpeaking.Load()) {
-				b.beginFinishing(ctx, "idle_timeout")
+				b.beginFinishing(ctx, call.EndIdleTimeout)
 				return
 			}
 		}
