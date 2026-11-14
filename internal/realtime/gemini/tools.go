@@ -19,7 +19,7 @@ const handoffToolName = "request_handoff"
 func handoffTool() *genai.Tool {
 	return &genai.Tool{FunctionDeclarations: []*genai.FunctionDeclaration{{
 		Name: handoffToolName,
-		Description: "Enregistre une demande de mise en relation, sans transfert réel. Appeler uniquement après avoir tenté de demander le nom de l'appelant (sauf s'il est déjà connu) et clarifié le motif. Un nom refusé ou inconnu peut être omis ; ne jamais inventer de coordonnées. Fournir un purpose précis et un summary factuel. Appeler cet outil AVANT de confirmer oralement la prise en compte.",
+		Description: "Record a request for a simulated handoff, not a real phone transfer. Only call after attempting to ask the caller’s name (unless already known) and clarifying the specific purpose. An unknown or declined name may be omitted; never invent contact details. Supply an accurate purpose and factual summary. Call BEFORE verbally confirming that the request was registered.",
 		Parameters: &genai.Schema{
 			Type: genai.TypeObject,
 			Properties: map[string]*genai.Schema{
@@ -89,7 +89,7 @@ const endCallToolName = "request_call_end"
 func endCallTool() *genai.Tool {
 	return &genai.Tool{FunctionDeclarations: []*genai.FunctionDeclaration{{
 		Name: endCallToolName,
-		Description: "Demande la fin naturelle de l'appel UNIQUEMENT quand l'appelant a clairement terminé l'échange. Prononce d'abord un bref au revoir puis appelle cet outil. Ne l'utilise jamais pour une simple pause, une question encore ouverte ou une demande de transfert.",
+		Description: "Request natural call completion ONLY after the caller clearly finishes the conversation. First say a brief goodbye in the caller’s language, then call this tool. Never call for a pause, an unresolved question, or a pending handoff.",
 		Parameters: &genai.Schema{
 			Type: genai.TypeObject,
 			Properties: map[string]*genai.Schema{
