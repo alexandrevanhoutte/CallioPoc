@@ -18,6 +18,7 @@ func TestEventType(t *testing.T) {
 		{"turn_end", realtime.EventTurnEnd},
 		{"interrupted", realtime.EventInterrupted},
 		{"handoff_required", realtime.EventHandoffRequired},
+		{"call_end_requested", realtime.EventCallEndRequested},
 	} {
 		got, err := realtime.NewEventType(tc.text)
 		if err != nil {
