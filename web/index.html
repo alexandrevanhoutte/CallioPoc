@@ -40,6 +40,15 @@
         <div id="transcript-list" class="transcript-list" role="log" aria-live="polite" aria-relevant="additions text"></div>
         <p class="note">Transcription is automatic; some speech may be missing or inaccurate. No transcript is saved to disk.</p>
       </section>
+      <section id="handoff-section" hidden>
+        <h2>Handoff requested</h2>
+        <p id="handoff-reason"></p>
+        <p id="handoff-caller"></p>
+        <p id="handoff-purpose"></p>
+        <p id="handoff-summary"></p>
+        <p id="handoff-contact"></p>
+        <p class="note">Simulation only — no real call transfer has occurred.</p>
+      </section>
       <section>
         <h2>Audio streaming</h2>
         <p>WebSocket: <span id="ws-status" role="status">Disconnected</span></p>
