@@ -96,6 +96,7 @@ async function stopSession(error) {
   session = null;
   startButton.disabled = true;
   stopButton.disabled = true;
+  stopButton.hidden = true;
   modeSelector.disabled = false;
   echo.disabled = true;
   echo.checked = false;
