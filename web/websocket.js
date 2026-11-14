@@ -82,6 +82,14 @@ export class AudioSocket {
     return true;
   }
 
+  sendControl(type) {
+    const socket = this.socket;
+    if (this.endpoint !== "/ws/live" || !socket || socket.readyState !== WebSocket.OPEN) return false;
+    if (!["accept", "decline", "no_answer", "end_call"].includes(type)) return false;
+    socket.send(JSON.stringify({ type }));
+    return true;
+  }
+
   close() {
     const socket = this.socket;
     this.socket = null;
