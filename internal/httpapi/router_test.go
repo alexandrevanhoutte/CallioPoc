@@ -25,6 +25,8 @@ func TestRouter(t *testing.T) {
 		body   string
 	}{
 		{name: "health", method: http.MethodGet, path: "/health", status: http.StatusOK, body: "{\"status\":\"ok\"}"},
+		{name: "capabilities with no provider", method: http.MethodGet, path: "/capabilities", status: http.StatusOK, body: "\"live_configured\":false"},
+		{name: "capabilities method not allowed", method: http.MethodPost, path: "/capabilities", status: http.StatusMethodNotAllowed},
 		{name: "health method not allowed", method: http.MethodPost, path: "/health", status: http.StatusMethodNotAllowed},
 		{name: "live missing provider", method: http.MethodGet, path: "/ws/live", status: http.StatusServiceUnavailable},
 		{name: "test page", method: http.MethodGet, path: "/", status: http.StatusOK, body: "CallioPoc"},

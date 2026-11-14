@@ -2,25 +2,8 @@ import { MicrophoneCapture } from "./microphone.js";
 import { AudioSocket } from "./websocket.js";
 import { AudioPlayer } from "./audio-player.js";
 import { TranscriptView } from "./transcript.js";
-
-const healthButton = document.querySelector("#check-health");
-const healthStatus = document.querySelector("#health-status");
-
-healthButton.addEventListener("click", async () => {
-  healthButton.disabled = true;
-  healthStatus.textContent = "Checking…";
-  try {
-    const response = await fetch("/health");
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const body = await response.json();
-    if (body.status !== "ok") throw new Error("Unexpected health response");
-    healthStatus.textContent = "Connected";
-  } catch (error) {
-    healthStatus.textContent = `Connection failed: ${error.message}`;
-  } finally {
-    healthButton.disabled = false;
-  }
-});
+import { SetupView, selectedMode } from "./setup.js";
+import { SummaryView } from "./summary.js";
 
 const modeSelector = document.querySelector("#stream-mode");
 const startButton = document.querySelector("#mic-start");
@@ -39,48 +22,35 @@ const playbackDropped = document.querySelector("#playback-dropped");
 const silentChunks = document.querySelector("#ai-silent-chunks");
 const interruptions = document.querySelector("#ai-interruptions");
 const echo = document.querySelector("#echo-playback");
+const micReady = document.querySelector(".mic-ready");
 const callStateLabel = document.querySelector("#call-state");
 const callFeedback = document.querySelector("#call-feedback");
 const summaryPanel = document.querySelector("#call-summary");
 const summaryStatus = document.querySelector("#summary-status");
 const summaryDetails = document.querySelector("#summary-details");
 
-function showSummary(event) {
-  if (event.type === "summary_error") {
-    summaryStatus.textContent = "Summary unavailable";
-    summaryDetails.hidden = true;
-    return;
-  }
-  const summary = event.summary;
-  if (!summary || typeof summary.summary !== "string" || summary.summary.length === 0) {
-    summaryStatus.textContent = "Summary unavailable";
-    summaryDetails.hidden = true;
-    return;
-  }
-  summaryStatus.textContent = "Generated summary";
-  summaryDetails.hidden = false;
-  const value = (key) => typeof summary[key] === "string" && summary[key].length > 0
-    ? summary[key] : "Unknown";
-  document.querySelector("#summary-caller").textContent = value("caller_name");
-  document.querySelector("#summary-reason").textContent = value("reason");
-  document.querySelector("#summary-urgency").textContent = value("urgency");
-  document.querySelector("#summary-handoff").textContent = summary.handoff_requested === true ? "Yes" : "No";
-  document.querySelector("#summary-text").textContent = summary.summary;
-  const actions = document.querySelector("#summary-actions");
-  actions.replaceChildren();
-  const items = Array.isArray(summary.follow_up_actions) ? summary.follow_up_actions : [];
-  if (items.length === 0) {
-    const li = document.createElement("li");
-    li.textContent = "No follow-up required";
-    actions.append(li);
-  }
-  for (const action of items) {
-    if (typeof action !== "string" || action.length === 0) continue;
-    const li = document.createElement("li");
-    li.textContent = action;
-    actions.append(li);
-  }
-}
+const summaryView = new SummaryView({
+  panel: summaryPanel,
+  status: summaryStatus,
+  details: summaryDetails,
+  caller: document.querySelector("#summary-caller"),
+  reason: document.querySelector("#summary-reason"),
+  urgency: document.querySelector("#summary-urgency"),
+  handoff: document.querySelector("#summary-handoff"),
+  text: document.querySelector("#summary-text"),
+  actions: document.querySelector("#summary-actions"),
+});
+
+const setup = new SetupView({
+  status: document.querySelector("#health-status"),
+  dot: document.querySelector("#health-dot"),
+  retry: document.querySelector("#check-health"),
+  selector: modeSelector,
+  description: document.querySelector("#mode-help"),
+  notice: document.querySelector("#setup-notice"),
+  start: startButton,
+});
+void setup.check();
 
 const handoffControls = document.querySelector("#handoff-controls");
 const handoffButtons = [
@@ -125,9 +95,9 @@ const transcript = new TranscriptView(
 let session = null;
 
 function readableError(error) {
-  if (error?.name === "NotAllowedError") return "Microphone permission denied.";
-  if (error?.name === "NotFoundError") return "No microphone found.";
-  if (error?.name === "NotReadableError") return "Microphone unavailable or in use.";
+  if (error?.name === "NotAllowedError") return "Microphone permission denied. Allow microphone access in your browser settings, then try again.";
+  if (error?.name === "NotFoundError") return "No microphone found. Connect a microphone and try again.";
+  if (error?.name === "NotReadableError") return "Microphone unavailable or in use by another app.";
   return error?.message || "Unknown audio error.";
 }
 
@@ -135,12 +105,13 @@ async function stopSession(error) {
   if (!session) return;
   const current = session;
   session = null;
-  startButton.disabled = true;
+  setup.setActive(true);
   stopButton.disabled = true;
   stopButton.hidden = true;
   modeSelector.disabled = false;
   echo.disabled = true;
   echo.checked = false;
+  micReady.classList.remove("is-active");
   try {
     // Always attempt all cleanup operations, even if one fails.
     try { current.socket.close(); } catch (e) { error ??= e; }
@@ -158,7 +129,7 @@ async function stopSession(error) {
     signalStatus.textContent = "No active audio input";
     level.value = 0;
     startButton.textContent = "Start new call";
-    startButton.disabled = false;
+    setup.setActive(false);
   }
 }
 
@@ -191,6 +162,7 @@ async function startMicrophone(current, socket) {
       return;
     }
     micStatus.textContent = "Recording";
+    micReady.classList.add("is-active");
     if (!live) aiStatus.textContent = "Echo test";
     if (!live) echo.disabled = false;
   } catch (error) {
@@ -201,20 +173,18 @@ async function startMicrophone(current, socket) {
 }
 
 startButton.addEventListener("click", async () => {
-  startButton.disabled = true;
+  setup.setActive(true);
   stopButton.hidden = false;
   startButton.textContent = "Start conversation";
   modeSelector.disabled = true;
-  const live = modeSelector.value === "live";
+  const live = selectedMode(modeSelector) === "live";
   micStatus.textContent = "Connecting to Go…";
   socketStatus.textContent = "Connecting…";
   aiStatus.textContent = live ? "Connecting to Gemini…" : "Echo test";
   signalStatus.textContent = "Waiting for audio chunks…";
   level.value = 0;
   transcript.clear();
-  summaryPanel.hidden = true;
-  summaryDetails.hidden = true;
-  summaryStatus.textContent = "Waiting for call completion…";
+  summaryView.reset();
   callStateLabel.textContent = live ? "Connecting" : "Echo test";
   callFeedback.textContent = "";
   handoffControls.hidden = true;
@@ -267,7 +237,7 @@ startButton.addEventListener("click", async () => {
       if (session !== current) return;
       if (event.type === "transcript") transcript.update(event);
       if (event.type === "call_summary" || event.type === "summary_error") {
-        showSummary(event);
+        summaryView.render(event);
         void stopSession();
         return;
       }
@@ -298,8 +268,7 @@ startButton.addEventListener("click", async () => {
         if (event.state === "completed") {
           current.finishing = true;
           stopButton.disabled = true;
-          summaryPanel.hidden = false;
-          summaryStatus.textContent = "Generating summary…";
+          summaryView.loading();
           void current.microphone?.stop().catch(error => console.warn("Microphone stop failed", error));
         }
       }

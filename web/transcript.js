@@ -89,7 +89,7 @@ export class TranscriptView {
     let row = this.rows.get(segment.id);
     if (!row) {
       row = document.createElement("div");
-      row.className = "transcript-segment";
+      row.className = `transcript-segment ${segment.speaker === "CALLER" ? "is-caller" : "is-ai"}`;
       const speaker = document.createElement("strong");
       speaker.textContent = segment.speaker === "AI" ? "Callio" : "Caller";
       const text = document.createElement("p");
