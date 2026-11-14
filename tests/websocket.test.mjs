@@ -79,6 +79,6 @@ test("invalid echoed data triggers error callback", async () => {
   ws.open();
   await connected;
   ws.receive(new ArrayBuffer(7));
-  assert.match(message, /Unexpected audio data/);
+  assert.match(message, /Unexpected .*audio data/);
   connection.close();
 });

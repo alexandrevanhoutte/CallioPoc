@@ -21,6 +21,7 @@ healthButton.addEventListener("click", async () => {
   }
 });
 
+const modeSelector = document.querySelector("#stream-mode");
 const startButton = document.querySelector("#mic-start");
 const stopButton = document.querySelector("#mic-stop");
 const micStatus = document.querySelector("#mic-status");
@@ -28,6 +29,7 @@ const signalStatus = document.querySelector("#mic-signal");
 const level = document.querySelector("#mic-level");
 const chunks = document.querySelector("#mic-chunks");
 const socketStatus = document.querySelector("#ws-status");
+const aiStatus = document.querySelector("#ai-status");
 const sent = document.querySelector("#ws-sent");
 const received = document.querySelector("#ws-received");
 const dropped = document.querySelector("#ws-dropped");
@@ -48,16 +50,18 @@ async function stopSession(error) {
   session = null;
   startButton.disabled = true;
   stopButton.disabled = true;
+  modeSelector.disabled = false;
   echo.disabled = true;
   echo.checked = false;
   try {
-    // Always release all resources, even if one cleanup fails.
-    try { await current.microphone?.stop(); } catch (e) { error ??= e; }
+    // Always attempt all cleanup operations, even if one fails.
     try { current.socket.close(); } catch (e) { error ??= e; }
+    try { await current.microphone?.stop(); } catch (e) { error ??= e; }
     try { await current.player.disable(); } catch (e) { error ??= e; }
   } finally {
     micStatus.textContent = error ? `Error: ${readableError(error)}` : "Stopped";
     socketStatus.textContent = error ? "Disconnected (error)" : "Disconnected";
+    aiStatus.textContent = error ? readableError(error) : "Idle";
     signalStatus.textContent = "No active audio input";
     level.value = 0;
     startButton.disabled = false;
@@ -66,18 +70,29 @@ async function stopSession(error) {
 
 startButton.addEventListener("click", async () => {
   startButton.disabled = true;
+  modeSelector.disabled = true;
+  const live = modeSelector.value === "live";
   micStatus.textContent = "Connecting to Go…";
   socketStatus.textContent = "Connecting…";
+  aiStatus.textContent = live ? "Connecting to Gemini…" : "Echo test";
   signalStatus.textContent = "Waiting for audio chunks…";
   level.value = 0;
   for (const counter of [chunks, sent, received, dropped]) counter.value = "0";
 
-  const current = { socket: null, microphone: null, player: new AudioPlayer() };
+  const current = { socket: null, microphone: null, player: new AudioPlayer(), live };
   const socket = new AudioSocket({
+    endpoint: live ? "/ws/live" : "/ws/audio",
     onChunk: (buffer) => {
       if (session !== current) return;
       received.value = String(Number(received.value) + 1);
-      if (echo.checked) current.player.play(buffer);
+      if (live || echo.checked) {
+        current.player.play(buffer, live ? 24000 : 16000);
+      }
+      if (live) aiStatus.textContent = "AI speaking";
+    },
+    onEvent: (event) => {
+      if (session !== current) return;
+      if (event.type === "turn_end") aiStatus.textContent = "Listening";
     },
     onDisconnect: (error) => {
       if (session === current) void stopSession(error);
@@ -87,6 +102,9 @@ startButton.addEventListener("click", async () => {
   session = current;
 
   try {
+    // User-gesture activation is required by browser audio autoplay rules.
+    if (live) await current.player.enable();
+    if (session !== current) return;
     await socket.connect();
     if (session !== current) return;
     socketStatus.textContent = "Connected";
@@ -104,6 +122,9 @@ startButton.addEventListener("click", async () => {
         } else {
           dropped.value = String(Number(dropped.value) + 1);
         }
+        if (live && aiStatus.textContent === "Connecting to Gemini…") {
+          aiStatus.textContent = "Listening";
+        }
       },
       onError: (error) => { if (session === current) void stopSession(error); },
     });
@@ -111,12 +132,12 @@ startButton.addEventListener("click", async () => {
     micStatus.textContent = "Requesting microphone permission…";
     await microphone.start();
     if (session !== current) {
-      await microphone.stop(); // Startup finished after a disconnect.
+      await microphone.stop();
       return;
     }
     micStatus.textContent = "Recording";
     stopButton.disabled = false;
-    echo.disabled = false;
+    if (!live) echo.disabled = false;
   } catch (error) {
     if (session === current) await stopSession(error);
   }
@@ -125,7 +146,7 @@ startButton.addEventListener("click", async () => {
 stopButton.addEventListener("click", () => { void stopSession(); });
 
 echo.addEventListener("change", () => {
-  if (!session) return;
+  if (!session || session.live) return;
   if (echo.checked) {
     void session.player.enable().catch((error) => {
       echo.checked = false;

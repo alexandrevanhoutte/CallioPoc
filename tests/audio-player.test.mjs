@@ -51,3 +51,12 @@ test("output queue rejects audio when already 250 ms ahead", async () => {
   assert.equal(player.play(new ArrayBuffer(640)), false);
   await player.disable();
 });
+
+test("24 kHz model playback accepts variable-sized PCM16 chunks", async () => {
+  const player = new AudioPlayer();
+  await player.enable();
+  assert.equal(player.play(new ArrayBuffer(960), 24000), true);
+  assert.equal(player.play(new ArrayBuffer(320), 24000), true);
+  assert.equal(player.play(new ArrayBuffer(3), 24000), false);
+  await player.disable();
+});

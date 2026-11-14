@@ -1,4 +1,4 @@
-// Small bounded PCM16 playback queue. Disabled by default to prevent feedback.
+// Bounded PCM16 mono playback. Gemini output uses 24 kHz; echo uses 16 kHz.
 export class AudioPlayer {
   constructor() {
     this.context = null;
@@ -8,7 +8,6 @@ export class AudioPlayer {
 
   async enable() {
     if (this.context) return;
-    // Call directly from the user's checkbox event to satisfy autoplay policies.
     const context = new AudioContext();
     this.context = context;
     this.nextStart = context.currentTime;
@@ -20,13 +19,15 @@ export class AudioPlayer {
     }
   }
 
-  play(buffer) {
+  play(buffer, sampleRate = 16000) {
     const context = this.context;
-    if (!context || context.state !== "running" || buffer.byteLength !== 640) return false;
+    if (!context || context.state !== "running") return false;
+    if (!(buffer instanceof ArrayBuffer) || buffer.byteLength < 2 || buffer.byteLength % 2 !== 0) return false;
+    if (sampleRate !== 16000 && sampleRate !== 24000) return false;
     if (this.nextStart - context.currentTime > 0.25) return false;
 
     const samples = new DataView(buffer);
-    const audio = context.createBuffer(1, 320, 16000);
+    const audio = context.createBuffer(1, buffer.byteLength / 2, sampleRate);
     const channel = audio.getChannelData(0);
     for (let i = 0; i < channel.length; i++) {
       channel[i] = samples.getInt16(i * 2, true) / 32768;
