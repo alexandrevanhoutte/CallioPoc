@@ -19,16 +19,16 @@ func TestLocale(t *testing.T) {
 		locale, err := realtime.NewLocale(tc.value)
 		if err != nil { t.Fatal(err) }
 		if locale.String() != tc.value { t.Fatalf("Locale.String() = %q, want %q", locale.String(), tc.value) }
-		if realtime.GreetingText(locale) == "" || !strings.Contains(locale.GreetingText(), tc.greeting) {
+		if realtime.GreetingText(locale) == "" || !strings.Contains(realtime.GreetingText(locale), tc.greeting) {
 			t.Fatalf("missing %s greeting", tc.value)
 		}
 		prompt := realtime.OpeningPrompt(locale)
-		if !strings.Contains(prompt, locale.GreetingText()) || !strings.Contains(prompt, "caller’s language") && !strings.Contains(prompt, "caller's language") {
+		if !strings.Contains(prompt, realtime.GreetingText(locale)) || !strings.Contains(prompt, "caller’s language") && !strings.Contains(prompt, "caller's language") {
 			t.Fatalf("opening prompt does not preserve greeting and language switching: %s", prompt)
 		}
 	}
 	for _, input := range []string{"", "fr", "ko", "en", "de-DE", "KO-KR"} {
-		if _, err := realtime.NewGreetingLocale(input); err == nil {
+		if _, err := realtime.NewLocale(input); err == nil {
 			t.Fatalf("expected invalid locale %q", input)
 		}
 	}
