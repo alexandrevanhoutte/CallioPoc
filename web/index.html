@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>CallioPoc</title>
     <link rel="stylesheet" href="/style.css" />
-    <script src="/app.js" defer></script>
+    <script type="module" src="/app.js"></script>
   </head>
   <body>
     <main>
@@ -16,7 +16,20 @@
         <p id="health-status" role="status">Not checked</p>
         <button id="check-health" type="button">Check health</button>
       </section>
-      <p class="note">Microphone and audio streaming come in CI-02 and CI-03.</p>
+      <section>
+        <h2>Microphone capture</h2>
+        <p id="mic-status" role="status">Inactive</p>
+        <label for="mic-level">Input level</label>
+        <progress id="mic-level" max="100" value="0"></progress>
+        <p id="mic-signal" role="status">No active audio input</p>
+        <p>PCM16 · 16 kHz · Mono · 20 ms chunks</p>
+        <p>Audio chunks received: <output id="mic-chunks">0</output></p>
+        <div class="mic-controls">
+          <button id="mic-start" type="button">Start microphone</button>
+          <button id="mic-stop" type="button" disabled>Stop microphone</button>
+        </div>
+      </section>
+      <p class="note">Audio is processed locally in the browser. WebSocket transport comes in CI-03.</p>
     </main>
   </body>
 </html>
