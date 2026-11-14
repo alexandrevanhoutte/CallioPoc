@@ -33,6 +33,10 @@ const aiStatus = document.querySelector("#ai-status");
 const sent = document.querySelector("#ws-sent");
 const received = document.querySelector("#ws-received");
 const dropped = document.querySelector("#ws-dropped");
+const playbackScheduled = document.querySelector("#playback-scheduled");
+const playbackDropped = document.querySelector("#playback-dropped");
+const silentChunks = document.querySelector("#ai-silent-chunks");
+const interruptions = document.querySelector("#ai-interruptions");
 const echo = document.querySelector("#echo-playback");
 
 let session = null;
@@ -77,7 +81,7 @@ startButton.addEventListener("click", async () => {
   aiStatus.textContent = live ? "Connecting to Gemini…" : "Echo test";
   signalStatus.textContent = "Waiting for audio chunks…";
   level.value = 0;
-  for (const counter of [chunks, sent, received, dropped]) counter.value = "0";
+  for (const counter of [chunks, sent, received, dropped, playbackScheduled, playbackDropped, silentChunks, interruptions]) counter.value = "0";
 
   const current = { socket: null, microphone: null, player: new AudioPlayer(), live };
   const socket = new AudioSocket({
@@ -85,14 +89,34 @@ startButton.addEventListener("click", async () => {
     onChunk: (buffer) => {
       if (session !== current) return;
       received.value = String(Number(received.value) + 1);
+      if (live && new Uint8Array(buffer).every((byte) => byte === 0)) {
+        silentChunks.value = String(Number(silentChunks.value) + 1);
+      }
       if (live || echo.checked) {
-        current.player.play(buffer, live ? 24000 : 16000);
+        if (current.player.play(buffer, live ? 24000 : 16000)) {
+          playbackScheduled.value = String(Number(playbackScheduled.value) + 1);
+        } else {
+          playbackDropped.value = String(Number(playbackDropped.value) + 1);
+          if (Number(playbackDropped.value) === 1) {
+            console.warn("Audio playback rejected a PCM16 chunk", {
+              contextState: current.player.context?.state,
+              queuedSeconds: current.player.context
+                ? Math.max(0, current.player.nextStart - current.player.context.currentTime)
+                : null,
+            });
+          }
+        }
       }
       if (live) aiStatus.textContent = "AI speaking";
     },
     onEvent: (event) => {
       if (session !== current) return;
       if (event.type === "turn_end") aiStatus.textContent = "Listening";
+      if (event.type === "interrupted") {
+        interruptions.value = String(Number(interruptions.value) + 1);
+        current.player.clear();
+        aiStatus.textContent = "Model interrupted — microphone activity detected";
+      }
     },
     onDisconnect: (error) => {
       if (session === current) void stopSession(error);

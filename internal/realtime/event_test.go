@@ -16,6 +16,7 @@ func TestEventType(t *testing.T) {
 		{"audio", realtime.EventAudio},
 		{"transcript", realtime.EventTranscript},
 		{"turn_end", realtime.EventTurnEnd},
+		{"interrupted", realtime.EventInterrupted},
 	} {
 		got, err := realtime.NewEventType(tc.text)
 		if err != nil {
@@ -25,7 +26,7 @@ func TestEventType(t *testing.T) {
 			t.Errorf("round trip %q: type=%v, string=%q", tc.text, got, got.String())
 		}
 	}
-	if realtime.EventAudio != 1 || realtime.EventTranscript != 2 || realtime.EventTurnEnd != 3 {
+	if realtime.EventAudio != 1 || realtime.EventTranscript != 2 || realtime.EventTurnEnd != 3 || realtime.EventInterrupted != 4 {
 		t.Fatal("event constants must start at iota + 1")
 	}
 	if _, err := realtime.NewEventType("unexpected"); err == nil {

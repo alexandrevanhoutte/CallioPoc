@@ -13,6 +13,7 @@ const (
 	EventAudio EventType = iota + 1
 	EventTranscript
 	EventTurnEnd
+	EventInterrupted
 )
 
 func NewEventType(value string) (EventType, error) {
@@ -23,6 +24,8 @@ func NewEventType(value string) (EventType, error) {
 		return EventTranscript, nil
 	case "turn_end":
 		return EventTurnEnd, nil
+	case "interrupted":
+		return EventInterrupted, nil
 	default:
 		return 0, fmt.Errorf("invalid event type: %q", value)
 	}
@@ -36,6 +39,8 @@ func (e EventType) String() string {
 		return "transcript"
 	case EventTurnEnd:
 		return "turn_end"
+	case EventInterrupted:
+		return "interrupted"
 	default:
 		return "unknown"
 	}

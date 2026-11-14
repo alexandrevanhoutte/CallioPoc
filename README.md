@@ -45,7 +45,19 @@ To switch model, change `GEMINI_MODEL`. Future providers can implement `realtime
 
 **Audio contract:** Browser sends 20 ms chunks of mono PCM16 signed little-endian 16 kHz, **640 bytes/message**, to `GET /ws/live`. Go sends Gemini audio as binary PCM16 mono **24 kHz**, normally 960-byte chunks (final chunk can be shorter); JSON text messages carry non-audio events (`turn_end`, future transcripts). `GET /ws/audio` retains the existing 16 kHz echo protocol.
 
-The interface defines `EventType` as numeric `iota + 1` with `NewEventType(string)` and `String()`. CI-05 implements robust interruption handling; CI-06 adds transcription.
+The interface defines `EventType` as numeric `iota + 1` with `NewEventType(string)` and `String()`. CI-04 now forwards Gemini's basic `interrupted` notification and clears queued playback. CI-05 adds advanced interruption handling; CI-06 adds transcription.
+
+### Troubleshooting: Gemini's voice is chopped or silent
+
+Gemini sends output in PCM16 24 kHz chunks, sometimes much faster than real-time playback. The browser now schedules up to **20 seconds** of audio without dropping the first few seconds of a burst; the earlier 250 ms limit silently discarded most speech.
+
+Watch the new debug counters:
+- **Chunks received** increases but **Playback dropped** increases: the playback queue is full or the browser audio context isn't running. Check the developer console for a one-time warning containing queued seconds/context state.
+- **Silent model chunks** increases rapidly (fully zero PCM16 payloads): the upstream model may be returning silence, not a sample-rate conversion problem.
+- **AI turn interruptions** increases during the model's reply: Gemini's VAD may be hearing the output through your microphone. Test with headphones; queued playback is flushed on interruption.
+- **Chunks received** stays at zero: check Gemini model availability, server logs, and the WebSocket connection.
+
+Live audio interruptions and all-zero output chunks are separate from WebSocket or audio-format errors, and the new counters make it possible to distinguish them.
 
 ## Validation commands
 

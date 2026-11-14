@@ -101,7 +101,10 @@ func forwardModel(ctx context.Context, conn *websocket.Conn, session realtime.Vo
 			if err := conn.Write(ctx, websocket.MessageBinary, event.Audio); err != nil {
 				return err
 			}
-		case realtime.EventTranscript, realtime.EventTurnEnd:
+		case realtime.EventTranscript, realtime.EventTurnEnd, realtime.EventInterrupted:
+			if event.Type == realtime.EventInterrupted {
+				slog.Info("Gemini Live model turn interrupted")
+			}
 			body, err := json.Marshal(map[string]string{
 				"type": event.Type.String(),
 				"text": event.Text,

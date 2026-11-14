@@ -105,6 +105,10 @@ func (s *session) Receive(ctx context.Context) (realtime.Event, error) {
 			continue
 		}
 		content := message.ServerContent
+		if content.Interrupted {
+			s.pending = append(s.pending, realtime.Event{Type: realtime.EventInterrupted})
+			continue
+		}
 		if content.ModelTurn != nil {
 			for _, part := range content.ModelTurn.Parts {
 				if part == nil || part.InlineData == nil || len(part.InlineData.Data) == 0 {

@@ -41,7 +41,11 @@
         <div class="counters">
           <p>Chunks sent: <output id="ws-sent">0</output></p>
           <p>Chunks received: <output id="ws-received">0</output></p>
-          <p>Chunks dropped: <output id="ws-dropped">0</output></p>
+          <p>Chunks dropped (upload): <output id="ws-dropped">0</output></p>
+          <p>Audio chunks scheduled for playback: <output id="playback-scheduled">0</output></p>
+          <p>Audio chunks dropped (playback): <output id="playback-dropped">0</output></p>
+          <p>Silent model chunks (all zeros): <output id="ai-silent-chunks">0</output></p>
+          <p>AI turn interruptions: <output id="ai-interruptions">0</output></p>
         </div>
         <label><input id="echo-playback" type="checkbox" disabled /> Play echoed audio (headphones recommended)</label>
         <p class="note">Gemini responses play automatically. Use headphones to avoid feedback.</p>

@@ -38,7 +38,11 @@ test("live WebSocket accepts PCM16 24 kHz responses and JSON events", async () =
   ws.receive(new ArrayBuffer(960));
   ws.receive(new ArrayBuffer(320));
   ws.receive(JSON.stringify({ type: "turn_end", text: "" }));
+  ws.receive(JSON.stringify({ type: "interrupted", text: "" }));
   assert.equal(audio.length, 2);
-  assert.deepEqual(events, [{ type: "turn_end", text: "" }]);
+  assert.deepEqual(events, [
+    { type: "turn_end", text: "" },
+    { type: "interrupted", text: "" },
+  ]);
   client.close();
 });

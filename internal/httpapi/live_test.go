@@ -94,10 +94,18 @@ func TestLiveBridge(t *testing.T) {
 	if kind != websocket.MessageBinary || len(result) != 960 || !bytes.Equal(result[:640], audio) {
 		t.Fatalf("unexpected live audio response: type=%v bytes=%d", kind, len(result))
 	}
-	conn.CloseNow()
 	provider.mu.Lock()
 	s := provider.session
 	provider.mu.Unlock()
+	s.events <- realtime.Event{Type: realtime.EventInterrupted}
+	kind, result, err = conn.Read(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kind != websocket.MessageText || !bytes.Contains(result, []byte(`"type":"interrupted"`)) {
+		t.Fatalf("unexpected interruption notification: type=%v body=%s", kind, result)
+	}
+	conn.CloseNow()
 	select {
 	case <-s.closed:
 	case <-time.After(time.Second):
