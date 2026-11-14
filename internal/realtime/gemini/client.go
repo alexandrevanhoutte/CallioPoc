@@ -15,10 +15,16 @@ const (
 	outputChunkBytes = 960 // PCM16 mono 24 kHz, 20 ms
 	outputSampleRate = 24000
 
-	frenchInstructions = "Tu es Callio, un assistant vocal qui répond aux appels. " +
-		"Réponds exclusivement en français, à voix haute, naturellement et brièvement. " +
-		"Pour le moment, discute avec l'appelant et demande-lui comment tu peux l'aider. " +
-		"N'invente pas d'informations, de capacités de transfert d'appel ou d'actions réalisées."
+	frenchInstructions = "Tu es Callio, un assistant IA qui décroche les appels entrants pour son correspondant. " +
+		"Parle uniquement en français, avec un ton naturel et chaleureux. " +
+		"Chaque intervention doit contenir une ou deux phrases courtes, idéalement 20 mots au total. " +
+		"Pose au maximum une question à la fois. Pas de listes, de longs préambules ni d'explications non demandées. " +
+		"Après l'accueil, écoute l'appelant et cherche simplement à comprendre l'objet de l'appel. " +
+		"Ne prétends pas être humain et n'invente jamais de transfert, de rendez-vous ou d'action effectuée."
+
+	openingPrompt = "Un nouvel appel entrant vient d'être décroché. " +
+		"Accueille immédiatement l'appelant à voix haute, en une seule phrase, " +
+		"en te présentant comme assistant IA et en lui demandant le motif de son appel."
 )
 
 type Provider struct {
@@ -47,19 +53,41 @@ func (p *Provider) Open(ctx context.Context) (realtime.VoiceSession, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	live, err := p.client.Live.Connect(ctx, p.model, &genai.LiveConnectConfig{
-		ResponseModalities: []genai.Modality{genai.ModalityAudio},
-		SystemInstruction: &genai.Content{
-			Parts: []*genai.Part{{Text: frenchInstructions}},
-		},
-	})
+	live, err := p.client.Live.Connect(ctx, p.model, liveConfig())
 	if err != nil {
 		return nil, fmt.Errorf("open Gemini Live session: %w", err)
+	}
+
+	// Trigger the initial receptionist greeting. The web client waits until
+	// playback ends before starting microphone capture.
+	if err := live.SendClientContent(genai.LiveClientContentInput{
+		Turns: []*genai.Content{{
+			Role:  "user",
+			Parts: []*genai.Part{{Text: openingPrompt}},
+		}},
+	}); err != nil {
+		_ = live.Close()
+		return nil, fmt.Errorf("start Gemini greeting: %w", err)
 	}
 
 	s := &session{live: live}
 	s.stopWatch = context.AfterFunc(ctx, func() { _ = s.Close() })
 	return s, nil
+}
+
+func liveConfig() *genai.LiveConnectConfig {
+	silenceDuration := int32(500)
+	return &genai.LiveConnectConfig{
+		ResponseModalities: []genai.Modality{genai.ModalityAudio},
+		SystemInstruction: &genai.Content{
+			Parts: []*genai.Part{{Text: frenchInstructions}},
+		},
+		RealtimeInputConfig: &genai.RealtimeInputConfig{
+			AutomaticActivityDetection: &genai.AutomaticActivityDetection{
+				SilenceDurationMs: &silenceDuration,
+			},
+		},
+	}
 }
 
 type session struct {
