@@ -26,7 +26,7 @@ func main() {
 	// Echo remains usable without an API key; only /ws/live needs credentials.
 	var provider realtime.VoiceProvider
 	if cfg.GeminiAPIKey != "" {
-		geminiProvider, err := gemini.New(ctx, cfg.GeminiAPIKey, cfg.GeminiModel)
+		geminiProvider, err := gemini.New(ctx, cfg.GeminiAPIKey, cfg.GeminiModel, cfg.GreetingLocale)
 		if err != nil {
 			logger.Error("initialize AI provider", "error", err)
 			os.Exit(1)
