@@ -60,7 +60,7 @@ func TestGreetingLocaleConfig(t *testing.T) {
 			if err != nil { t.Fatal(err) }
 			want := locale
 			if want == "" { want = "fr-FR" }
-			if string(cfg.GreetingLocale) != want { t.Fatalf("got %q, want %q", cfg.GreetingLocale, want) }
+			if cfg.GreetingLocale.String() != want { t.Fatalf("got %q, want %q", cfg.GreetingLocale, want) }
 		})
 	}
 }
