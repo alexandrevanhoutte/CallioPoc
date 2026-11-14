@@ -13,6 +13,7 @@ import (
 func NewRouter(appCtx context.Context, webFiles fs.FS, provider realtime.VoiceProvider, summarizer call.Summarizer) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
+	mux.HandleFunc("GET /capabilities", capabilities(provider != nil))
 	mux.Handle("GET /ws/audio", audioEcho(appCtx))
 	mux.Handle("GET /ws/live", audioLive(appCtx, provider, summarizer))
 	mux.Handle("GET /", http.FileServer(http.FS(webFiles)))

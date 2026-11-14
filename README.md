@@ -23,6 +23,8 @@ go run ./cmd/callio
 
 Open <http://localhost:8080>. The server binds to loopback only; localhost is a secure browser context. Existing process environment variables take precedence over `.env` values. The server starts without a Gemini key, but **only Echo mode** is available until the key is supplied.
 
+The dark local playground automatically checks `GET /capabilities`, which reports only `status` and `live_configured`; it never exposes keys. Select **Echo** to check the microphone without credentials, or **Gemini Live** to speak to Callio. Start a call, allow browser microphone access, and end it using the on-screen control. The transcript and post-call summary remain available until the next call or reload. The collapsed **Advanced** panel contains streaming counters and optional Echo playback. No real phone transfer or PSTN call is made.
+
 ## Configuration
 
 | Variable | Default | Description |

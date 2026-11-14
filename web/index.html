@@ -3,80 +3,127 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>CallioPoc</title>
+    <meta name="theme-color" content="#0b1120" />
+    <title>Callio — Local playground</title>
     <link rel="stylesheet" href="/style.css" />
     <script type="module" src="/app.js"></script>
   </head>
   <body>
-    <main>
-      <h1>CallioPoc</h1>
-      <p>Local AI receptionist proof of concept.</p>
-      <section>
-        <h2>Backend connection</h2>
-        <p id="health-status" role="status">Not checked</p>
-        <button id="check-health" type="button">Check health</button>
-      </section>
-      <section>
-        <h2>Audio conversation</h2>
-        <label for="stream-mode">Mode</label>
-        <select id="stream-mode">
-          <option value="live">Gemini Live (multilingual conversation)</option>
-          <option value="echo">Echo (test without API key)</option>
-        </select>
-        <p id="mic-status" role="status">Inactive</p>
-        <label for="mic-level">Input level</label>
-        <progress id="mic-level" max="100" value="0"></progress>
-        <p id="mic-signal" role="status">No active audio input</p>
-        <p>Microphone: PCM16 · 16 kHz · mono · 20 ms chunks</p>
-        <p>Audio chunks produced: <output id="mic-chunks">0</output></p>
-        <div class="mic-controls">
-          <button id="mic-start" type="button">Start conversation</button>
-          <button id="mic-stop" type="button" disabled>End call</button>
+    <div class="shell">
+      <header class="site-header">
+        <div class="brand">
+          <span class="brand-icon" aria-hidden="true">C</span>
+          <div><strong>Callio</strong><span class="brand-subtitle">Local playground</span></div>
         </div>
-      </section>
-      <section>
-        <h2>Conversation</h2>
-        <p id="transcript-status" role="status">Waiting for conversation…</p>
-        <p>Call state: <strong id="call-state" role="status">Inactive</strong></p>
-        <div id="transcript-list" class="transcript-list" role="log" aria-live="polite" aria-relevant="additions text"></div>
-        <div id="handoff-controls" class="handoff-controls" hidden>
-          <p>Simulated human takeover — no real telephone transfer.</p>
-          <button id="call-accept" type="button">Accept</button>
-          <button id="call-decline" type="button">Decline</button>
-          <button id="call-no-answer" type="button">Simulate no answer</button>
+        <div class="connection">
+          <span id="health-dot" class="status-dot" aria-hidden="true"></span>
+          <span id="health-status" role="status">Checking backend…</span>
+          <button id="check-health" class="text-button" type="button">Retry</button>
         </div>
-        <p id="call-feedback" role="status"></p>
-        <section id="call-summary" class="summary-panel" hidden aria-labelledby="summary-heading">
-          <h3 id="summary-heading">Call Summary</h3>
+      </header>
+
+      <main>
+        <div class="intro">
+          <div>
+            <p class="eyebrow">AI RECEPTIONIST · LOCAL DEMO</p>
+            <h1>Try a conversation</h1>
+            <p class="intro-copy">Talk to Callio in your browser. Test the AI receptionist or check your microphone with Echo.</p>
+          </div>
+          <span class="local-chip">Local only</span>
+        </div>
+
+        <div class="workspace">
+          <section class="panel call-panel" aria-labelledby="call-heading">
+            <div class="panel-heading">
+              <div><p class="eyebrow">01 · GET STARTED</p><h2 id="call-heading">Call controls</h2></div>
+              <span id="call-state" class="state-pill" role="status">Inactive</span>
+            </div>
+            <label for="stream-mode">Conversation mode</label>
+            <select id="stream-mode">
+              <option value="live">Gemini Live — AI conversation</option>
+              <option value="echo">Echo — microphone test</option>
+            </select>
+            <p id="mode-help" class="field-help">Talk to Callio in different languages. Requires a Gemini API key configured on the server.</p>
+            <p id="setup-notice" class="notice" role="status" hidden></p>
+            <div class="microphone">
+              <div class="mic-heading">
+                <span class="mic-icon" aria-hidden="true">●</span>
+                <div><strong>Microphone</strong><span id="mic-status" role="status">Inactive</span></div>
+              </div>
+              <label for="mic-level" class="subtle-label">Input level</label>
+              <progress id="mic-level" max="100" value="0"></progress>
+              <p id="mic-signal" class="field-help" role="status">No active audio input</p>
+            </div>
+            <div class="mic-controls">
+              <button id="mic-start" class="primary-button" type="button">Start conversation</button>
+              <button id="mic-stop" class="danger-button" type="button" disabled hidden>End call</button>
+            </div>
+            <p class="helper">Allow microphone access when prompted. Headphones are recommended to avoid feedback.</p>
+            <p class="helper">This is a browser simulation — no real phone call or telephone transfer takes place.</p>
+          </section>
+
+          <section class="panel transcript-panel" aria-labelledby="conversation-heading">
+            <div class="panel-heading">
+              <div><p class="eyebrow">02 · CONVERSATION</p><h2 id="conversation-heading">Live transcript</h2></div>
+              <span id="ai-status" class="secondary-status" role="status">Idle</span>
+            </div>
+            <p id="transcript-status" class="field-help" role="status">Waiting for conversation…</p>
+            <div id="transcript-list" class="transcript-list" role="log" aria-live="polite" aria-relevant="additions text"></div>
+            <div id="handoff-controls" class="handoff-controls" hidden>
+              <strong>Simulated handoff</strong>
+              <p class="helper">Choose what happens next. No real telephone connection is made.</p>
+              <div class="handoff-actions">
+                <button id="call-accept" type="button">Accept</button>
+                <button id="call-decline" type="button">Decline</button>
+                <button id="call-no-answer" type="button">Simulate no answer</button>
+              </div>
+            </div>
+            <p id="call-feedback" class="field-help" role="status"></p>
+            <p class="helper transcript-note">Transcription may be inaccurate or incomplete. Transcript data stays in memory only.</p>
+          </section>
+        </div>
+
+        <section id="call-summary" class="panel summary-panel" hidden aria-labelledby="summary-heading">
+          <div class="panel-heading">
+            <div><p class="eyebrow">03 · AFTER THE CALL</p><h2 id="summary-heading">Call summary</h2></div>
+          </div>
           <p id="summary-status" role="status">Waiting for call completion…</p>
           <div id="summary-details" hidden>
-            <p><strong>Caller:</strong> <span id="summary-caller"></span></p>
-            <p><strong>Reason:</strong> <span id="summary-reason"></span></p>
-            <p><strong>Urgency:</strong> <span id="summary-urgency"></span></p>
-            <p><strong>Handoff requested:</strong> <span id="summary-handoff"></span></p>
+            <dl class="summary-grid">
+              <div><dt>Caller</dt><dd id="summary-caller"></dd></div>
+              <div><dt>Reason</dt><dd id="summary-reason"></dd></div>
+              <div><dt>Urgency</dt><dd id="summary-urgency"></dd></div>
+              <div><dt>Handoff requested</dt><dd id="summary-handoff"></dd></div>
+            </dl>
             <p id="summary-text"></p>
-            <h4>Follow-up actions</h4>
+            <h3>Follow-up actions</h3>
             <ul id="summary-actions"></ul>
           </div>
         </section>
-        <p class="note">Transcription is automatic; some speech may be missing or inaccurate. No transcript is saved to disk.</p>
-      </section>
-      <section>
-        <h2>Audio streaming</h2>
-        <p>WebSocket: <span id="ws-status" role="status">Disconnected</span></p>
-        <p>AI: <span id="ai-status" role="status">Idle</span></p>
-        <div class="counters">
-          <p>Chunks sent: <output id="ws-sent">0</output></p>
-          <p>Chunks received: <output id="ws-received">0</output></p>
-          <p>Chunks dropped (upload): <output id="ws-dropped">0</output></p>
-          <p>Audio chunks scheduled for playback: <output id="playback-scheduled">0</output></p>
-          <p>Audio chunks dropped (playback): <output id="playback-dropped">0</output></p>
-          <p>Silent model chunks (all zeros): <output id="ai-silent-chunks">0</output></p>
-          <p>AI turn interruptions: <output id="ai-interruptions">0</output></p>
-        </div>
-        <label><input id="echo-playback" type="checkbox" disabled /> Play echoed audio (headphones recommended)</label>
-        <p class="note">Gemini responses play automatically. Use headphones to avoid feedback.</p>
-      </section>
-    </main>
+
+        <details class="advanced">
+          <summary>Advanced <span>Streaming diagnostics and Echo playback</span></summary>
+          <div class="advanced-body">
+            <div class="advanced-status">
+              <p>WebSocket: <strong id="ws-status" role="status">Disconnected</strong></p>
+              <p>Audio input: PCM16 · 16 kHz · mono · 20 ms chunks</p>
+            </div>
+            <div class="counters">
+              <p>Produced <output id="mic-chunks">0</output></p>
+              <p>Sent <output id="ws-sent">0</output></p>
+              <p>Received <output id="ws-received">0</output></p>
+              <p>Dropped upload <output id="ws-dropped">0</output></p>
+              <p>Scheduled playback <output id="playback-scheduled">0</output></p>
+              <p>Dropped playback <output id="playback-dropped">0</output></p>
+              <p>Silent AI chunks <output id="ai-silent-chunks">0</output></p>
+              <p>AI interruptions <output id="ai-interruptions">0</output></p>
+            </div>
+            <label class="echo-option"><input id="echo-playback" type="checkbox" disabled /> Play echoed audio (headphones recommended)</label>
+            <p class="helper">Gemini replies play automatically. More debugging tools are planned in CI-13.4 and CI-13.5.</p>
+          </div>
+        </details>
+      </main>
+      <footer>Callio · Single-user proof of concept · No phone network integration</footer>
+    </div>
   </body>
 </html>
