@@ -313,7 +313,11 @@ func TestLiveLifecycleControl(t *testing.T) {
 			if err != nil { t.Fatal(err) }
 			defer conn.CloseNow()
 
-			// Establish the provider session without assuming a welcome event.
+			// A frame both initializes the provider and confirms the bridge is ready.
+			if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 640)); err != nil { t.Fatal(err) }
+			if kind, _, err := conn.Read(ctx); err != nil || kind != websocket.MessageBinary {
+				t.Fatalf("expected initial echo, kind=%v err=%v", kind, err)
+			}
 			provider.mu.Lock()
 			s := provider.session
 			provider.mu.Unlock()
