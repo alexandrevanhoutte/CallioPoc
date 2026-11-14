@@ -38,6 +38,7 @@ func (b *liveBridge) beginFinishing(ctx context.Context, reason string) {
 	}
 	b.finishReason = reason
 	b.finishing.Store(true)
+	generation := b.finishGeneration.Add(1)
 	b.finishMu.Unlock()
 	slog.Info("call completion initiated", "reason", reason)
 	if reason == "idle_timeout" {
@@ -49,12 +50,32 @@ func (b *liveBridge) beginFinishing(ctx context.Context, reason string) {
 		defer timer.Stop()
 		select {
 		case <-timer.C:
+			if b.finishGeneration.Load() != generation { return }
 			if err := b.sendFinishing(ctx); err != nil && ctx.Err() == nil {
 				slog.Debug("could not send call_finishing", "error", err)
 			}
 		case <-ctx.Done():
 		}
 	}()
+}
+
+// If the caller interrupts the farewell, abort pending natural completion.
+func (b *liveBridge) cancelFinishing(ctx context.Context) {
+	b.finishMu.Lock()
+	if !b.finishing.Load() || b.finishSent.Load() {
+		b.finishMu.Unlock()
+		return
+	}
+	b.finishing.Store(false)
+	b.finishReason = ""
+	b.finishGeneration.Add(1)
+	b.finishMu.Unlock()
+	slog.Info("natural call completion cancelled by interruption")
+	if err := b.writeJSON(ctx, struct {
+		Type string `json:"type"`
+	}{Type: "call_end_cancelled"}); err != nil && ctx.Err() == nil {
+		slog.Debug("failed to send call_end_cancelled", "error", err)
+	}
 }
 
 func (b *liveBridge) sendFinishing(ctx context.Context) error {
