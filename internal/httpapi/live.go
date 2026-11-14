@@ -481,7 +481,7 @@ func (s *liveSession) watchInactivity(ctx context.Context, timeout time.Duration
 			if err := s.requestEnd(ctx, call.EndIdleTimeout); err != nil && ctx.Err() == nil {
 				slog.Debug("failed to finish idle call", "error", err)
 			}
-			return
+			// Continue monitoring if a caller interruption cancels completion.
 		}
 	}
 }
