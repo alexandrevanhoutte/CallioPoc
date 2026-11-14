@@ -27,7 +27,7 @@ type liveBridge struct {
 	finishSent atomic.Bool
 	aiSpeaking atomic.Bool
 	lastActivity atomic.Int64
-	finishReason string
+	finishReason call.EndReason
 	finishMu sync.Mutex
 	finishGeneration atomic.Uint64
 }
@@ -96,8 +96,8 @@ func (b *liveBridge) readInput(ctx context.Context) error {
 				continue
 			}
 			if err := b.lifecycle.Complete(); err != nil { return err }
-			slog.Info("call completed after browser playback", "reason", b.finishReason)
-			if err := b.sendState(ctx, b.finishReason); err != nil { return err }
+			slog.Info("call completed after browser playback", "reason", b.finishReason.String())
+			if err := b.sendState(ctx, b.finishReason.String()); err != nil { return err }
 			return nil
 		case "accept":
 			if err := b.lifecycle.Accept(ctx); err != nil {
@@ -121,6 +121,7 @@ func (b *liveBridge) readInput(ctx context.Context) error {
 				continue
 			}
 			if err := b.sendState(ctx, message.Type); err != nil { return err }
+			b.touch()
 			slog.Info("simulated handoff unresolved", "outcome", message.Type)
 			// Instruct the AI to offer to take a message, not to claim that
 			// an actual telephone transfer took place.
