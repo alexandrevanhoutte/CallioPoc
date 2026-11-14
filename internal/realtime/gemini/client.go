@@ -19,7 +19,7 @@ type Provider struct {
 	locale realtime.Locale
 }
 
-func New(ctx context.Context, apiKey, model string, locale realtime.GreetingLocale) (*Provider, error) {
+func New(ctx context.Context, apiKey, model string, locale realtime.Locale) (*Provider, error) {
 	if apiKey == "" {
 		return nil, errors.New("GEMINI_API_KEY is missing")
 	}
