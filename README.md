@@ -37,17 +37,17 @@ To switch model, change `GEMINI_MODEL`. Future providers can implement `realtime
 ## Testing
 
 1. Select **Echo** for the CI-03 loopback audio test (no API key needed).
-2. Select **Gemini Live** and click **Start conversation**. The assistant speaks **first** with a short greeting; after the greeting finishes, the browser requests microphone permission and begins capturing the caller.
-3. Speak French after the greeting. Gemini uses **500 ms** of detected silence to end your turn; responses are instructed to stay within one or two short French sentences. The **Chunks sent** counter increases after microphone access; **Chunks received** counts output chunks.
+2. Select **Gemini Live** and click **Start conversation**. Grant microphone permission immediately: the assistant still speaks **first**, but you can interrupt its greeting while it is talking.
+3. Speak French during or after the greeting. Gemini uses **500 ms** of detected silence to end your turn; responses are instructed to stay within one or two short French sentences. The **Chunks sent** counter increases after microphone access; **Chunks received** counts output chunks.
 4. Wear headphones to avoid sound feedback. Gemini audio playback is enabled on the user click; Echo playback remains an optional toggle.
 5. Click **Stop**, then repeat. Verify microphone tracks, WebSocket and Gemini session all close.
 6. Stop the backend during a session; it should release provider/browser resources.
 
 **Audio contract:** Browser sends 20 ms chunks of mono PCM16 signed little-endian 16 kHz, **640 bytes/message**, to `GET /ws/live`. Go sends Gemini audio as binary PCM16 mono **24 kHz**, normally 960-byte chunks (final chunk can be shorter); JSON text messages carry non-audio events (`turn_end`, future transcripts). `GET /ws/audio` retains the existing 16 kHz echo protocol.
 
-The browser's AI status indicator is for local testing only, not the future telephone caller. The assistant greeting is a separate initial content turn; microphone streaming starts after the welcome audio is scheduled and played. The **500 ms** silence timeout may require adjustment if it interrupts natural pauses. CI-05 will improve full-duplex interruption handling.
+The browser's AI status indicator is for local testing only, not the future telephone caller. The assistant greeting remains a separate initial content turn, while microphone capture starts immediately for full-duplex barge-in. The **500 ms** silence timeout may require adjustment if it interrupts natural pauses. Use headphones to avoid false barge-in caused by the model hearing its own output.
 
-The interface defines `EventType` as numeric `iota + 1` with `NewEventType(string)` and `String()`. CI-04 now forwards Gemini's basic `interrupted` notification and clears queued playback. CI-05 adds advanced interruption handling; CI-06 adds transcription.
+The interface defines `EventType` as numeric `iota + 1` with `NewEventType(string)` and `String()`. CI-05 assigns local backend turn IDs, drops queued/stale audio for interrupted turns, forwards Gemini's `interrupted` notification, and immediately flushes browser playback. A late `turn_end` following interruption is ignored, and WebSocket/session reuse continues normally. CI-06 adds transcription.
 
 ### Troubleshooting: Gemini's voice is chopped or silent
 
@@ -60,6 +60,15 @@ Watch the new debug counters:
 - **Chunks received** stays at zero: check Gemini model availability, server logs, and the WebSocket connection.
 
 Live audio interruptions and all-zero output chunks are separate from WebSocket or audio-format errors, and the new counters make it possible to distinguish them.
+
+## CI-05 interruption smoke test
+
+1. Use **headphones** and select **Gemini Live**. When the greeting begins, say `Attends, je veux parler à Alexandre` before the AI finishes. It should stop and respond to the new request without reconnecting.
+2. Ask for a longer explanation and interrupt the response in the middle. Remaining old audio should stop, and the next response should not overlap.
+3. Repeat interruption three times, then click Stop and start again. The microphone and session must close cleanly.
+4. Watch **AI turn interruptions**. It should increase on confirmed Gemini interruptions, while **Chunks dropped (playback)** should normally remain at zero.
+
+The backend logs assistant turn starts/completions/interruptions with an internal `turn_id`. Binary audio frames remain compatible with CI-04; no JSON metadata is added to each chunk. Turn IDs are local diagnostics, not a guarantee that an external provider can identify every delayed audio frame. Browser playback tracking uses the real `AudioBufferSourceNode.onended` callback rather than assuming `turn_end` means all queued audio has finished playing.
 
 ## Validation commands
 

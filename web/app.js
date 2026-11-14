@@ -52,7 +52,6 @@ async function stopSession(error) {
   if (!session) return;
   const current = session;
   session = null;
-  clearTimeout(current.greetingTimer);
   startButton.disabled = true;
   stopButton.disabled = true;
   modeSelector.disabled = false;
@@ -102,7 +101,7 @@ async function startMicrophone(current, socket) {
       return;
     }
     micStatus.textContent = "Recording";
-    aiStatus.textContent = live ? "Listening" : "Echo test";
+    if (!live) aiStatus.textContent = "Echo test";
     if (!live) echo.disabled = false;
   } catch (error) {
     if (session === current) await stopSession(error);
@@ -122,7 +121,11 @@ startButton.addEventListener("click", async () => {
   level.value = 0;
   for (const counter of [chunks, sent, received, dropped, playbackScheduled, playbackDropped, silentChunks, interruptions]) counter.value = "0";
 
-  const current = { socket: null, microphone: null, player: new AudioPlayer(), live, greetingTimer: null, microphoneStarting: false };
+  const current = { socket: null, microphone: null, player: new AudioPlayer(), live, microphoneStarting: false, generationFinished: false };
+  current.player.onIdle = () => {
+    if (session !== current || !current.generationFinished) return;
+    aiStatus.textContent = "Listening";
+  };
   const socket = new AudioSocket({
     endpoint: live ? "/ws/live" : "/ws/audio",
     onChunk: (buffer) => {
@@ -146,27 +149,23 @@ startButton.addEventListener("click", async () => {
           }
         }
       }
-      if (live) aiStatus.textContent = "AI speaking";
+      if (live) {
+        current.generationFinished = false;
+        aiStatus.textContent = "AI speaking";
+      }
     },
     onEvent: (event) => {
       if (session !== current) return;
       if (event.type === "turn_end") {
-        if (live && !current.microphone && !current.microphoneStarting) {
-          // Gemini may finish sending its greeting before playback finishes.
-          // Do not begin uploading caller audio until the greeting is audible.
-          const waitSeconds = Math.max(0, current.player.nextStart - (current.player.context?.currentTime ?? 0));
-          aiStatus.textContent = "Finishing greeting…";
-          current.greetingTimer = setTimeout(() => {
-            if (session === current) void startMicrophone(current, socket);
-          }, waitSeconds * 1000);
-        } else {
-          aiStatus.textContent = "Listening";
-        }
+        current.generationFinished = true;
+        aiStatus.textContent = current.player.sources.size > 0
+          ? "Finishing playback…" : "Listening";
       }
       if (event.type === "interrupted") {
         interruptions.value = String(Number(interruptions.value) + 1);
+        current.generationFinished = false;
         current.player.clear();
-        aiStatus.textContent = "Model interrupted — microphone activity detected";
+        aiStatus.textContent = "Interrupted — listening";
       }
     },
     onDisconnect: (error) => {
@@ -185,12 +184,10 @@ startButton.addEventListener("click", async () => {
     socketStatus.textContent = "Connected";
 
     stopButton.disabled = false;
-    if (live) {
-      micStatus.textContent = "Waiting for assistant greeting…";
-      aiStatus.textContent = "Assistant greeting…";
-    } else {
-      await startMicrophone(current, socket);
-    }
+    if (live) aiStatus.textContent = "Greeting / listening…";
+    // Start microphone immediately for true full duplex barge-in, including
+    // during the initial assistant greeting. Gemini VAD handles activity.
+    await startMicrophone(current, socket);
   } catch (error) {
     if (session === current) await stopSession(error);
   }

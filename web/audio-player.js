@@ -8,6 +8,7 @@ export class AudioPlayer {
     this.context = null;
     this.nextStart = 0;
     this.sources = new Set();
+    this.onIdle = null;
   }
 
   async enable() {
@@ -48,6 +49,7 @@ export class AudioPlayer {
     source.onended = () => {
       this.sources.delete(source);
       source.disconnect();
+      if (this.sources.size === 0) this.onIdle?.();
     };
     this.sources.add(source);
     const startAt = Math.max(context.currentTime + START_DELAY_SECONDS, this.nextStart);
