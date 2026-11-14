@@ -172,6 +172,7 @@ startButton.addEventListener("click", async () => {
       if (session !== current) return;
       if (event.type === "transcript") transcript.update(event);
       if (event.type === "handoff_required") {
+        console.info("Callio handoff_required received", event);
         const details = event.context || {};
         handoffReason.textContent = `Reason: ${event.reason || ""}`;
         handoffCaller.textContent = `Caller: ${details.caller_name || "Not provided"}`;
