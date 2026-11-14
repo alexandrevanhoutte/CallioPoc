@@ -16,7 +16,7 @@ const inputChunkBytes = 640 // PCM16 mono 16 kHz, 20 ms
 type Provider struct {
 	client *genai.Client
 	model  string
-	locale realtime.GreetingLocale
+	locale realtime.Locale
 }
 
 func New(ctx context.Context, apiKey, model string, locale realtime.GreetingLocale) (*Provider, error) {
@@ -26,7 +26,7 @@ func New(ctx context.Context, apiKey, model string, locale realtime.GreetingLoca
 	if model == "" {
 		return nil, errors.New("GEMINI_MODEL is missing")
 	}
-	if _, err := realtime.NewGreetingLocale(string(locale)); err != nil {
+	if _, err := realtime.NewLocale(locale.String()); err != nil {
 		return nil, err
 	}
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
@@ -53,7 +53,7 @@ func (p *Provider) Open(ctx context.Context) (realtime.VoiceSession, error) {
 	if err := live.SendClientContent(genai.LiveClientContentInput{
 		Turns: []*genai.Content{{
 			Role:  "user",
-			Parts: []*genai.Part{{Text: p.locale.OpeningPrompt()}},
+			Parts: []*genai.Part{{Text: realtime.OpeningPrompt(p.locale)}},
 		}},
 	}); err != nil {
 		_ = live.Close()
