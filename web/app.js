@@ -2,7 +2,7 @@ import { MicrophoneCapture } from "./microphone.js";
 import { AudioSocket } from "./websocket.js";
 import { AudioPlayer } from "./audio-player.js";
 import { TranscriptView } from "./transcript.js";
-import { SetupView } from "./setup.js";
+import { SetupView, selectedMode } from "./setup.js";
 import { SummaryView } from "./summary.js";
 
 const modeSelector = document.querySelector("#stream-mode");
@@ -22,6 +22,7 @@ const playbackDropped = document.querySelector("#playback-dropped");
 const silentChunks = document.querySelector("#ai-silent-chunks");
 const interruptions = document.querySelector("#ai-interruptions");
 const echo = document.querySelector("#echo-playback");
+const micReady = document.querySelector(".mic-ready");
 const callStateLabel = document.querySelector("#call-state");
 const callFeedback = document.querySelector("#call-feedback");
 const summaryPanel = document.querySelector("#call-summary");
@@ -110,6 +111,7 @@ async function stopSession(error) {
   modeSelector.disabled = false;
   echo.disabled = true;
   echo.checked = false;
+  micReady.classList.remove("is-active");
   try {
     // Always attempt all cleanup operations, even if one fails.
     try { current.socket.close(); } catch (e) { error ??= e; }
@@ -160,6 +162,7 @@ async function startMicrophone(current, socket) {
       return;
     }
     micStatus.textContent = "Recording";
+    micReady.classList.add("is-active");
     if (!live) aiStatus.textContent = "Echo test";
     if (!live) echo.disabled = false;
   } catch (error) {
@@ -174,7 +177,7 @@ startButton.addEventListener("click", async () => {
   stopButton.hidden = false;
   startButton.textContent = "Start conversation";
   modeSelector.disabled = true;
-  const live = modeSelector.value === "live";
+  const live = selectedMode(modeSelector) === "live";
   micStatus.textContent = "Connecting to Go…";
   socketStatus.textContent = "Connecting…";
   aiStatus.textContent = live ? "Connecting to Gemini…" : "Echo test";

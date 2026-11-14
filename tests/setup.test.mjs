@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { modeDescription, setupMessage, SetupView } from "../web/setup.js";
+import { modeDescription, selectedMode, setupMessage, SetupView } from "../web/setup.js";
 
 test("local setup keeps Echo usable without Gemini credentials", () => {
   assert.match(modeDescription("echo", false), /without an API key/);
@@ -14,6 +14,7 @@ function element() {
     textContent: "", disabled: false, hidden: false, value: "live",
     classList: { toggle() {} },
     addEventListener(name, callback) { this[name] = callback; },
+    querySelector() { return { value: this.value }; },
   };
 }
 
@@ -53,4 +54,12 @@ test("setup view gives a recoverable state on backend failure", async () => {
   } finally {
     globalThis.fetch = previousFetch;
   }
+});
+
+test("native mode selection reads the checked radio option", () => {
+  const group = element();
+  group.value = "echo";
+  assert.equal(selectedMode(group), "echo");
+  group.value = "live";
+  assert.equal(selectedMode(group), "live");
 });

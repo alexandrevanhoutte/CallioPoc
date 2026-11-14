@@ -1,5 +1,9 @@
 // One small view for local setup and backend readiness.
 // "live_configured" is only a server-side configuration hint, not a guarantee of Gemini availability.
+export function selectedMode(group) {
+  return group.querySelector('input[name="mode"]:checked')?.value ?? "live";
+}
+
 export function modeDescription(mode, liveConfigured) {
   if (mode === "echo") return "Test microphone streaming without an API key. Playback can be enabled in Advanced.";
   return liveConfigured === false
@@ -31,8 +35,8 @@ export class SetupView {
   }
 
   render() {
-    const mode = this.selector.value;
-    const message = setupMessage({ online: this.online, liveConfigured: this.liveConfigured, mode });
+    const mode = selectedMode(this.selector);
+    const message = this.busy ? "" : setupMessage({ online: this.online, liveConfigured: this.liveConfigured, mode });
     this.description.textContent = modeDescription(mode, this.liveConfigured);
     this.notice.hidden = !message;
     this.notice.textContent = message;
