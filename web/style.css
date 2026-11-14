@@ -74,3 +74,15 @@ progress {
 .transcript-segment strong { font-size: 0.85rem; }
 .transcript-segment p { margin: 0.4rem 0 0; }
 .transcript-partial { opacity: 0.65; }
+
+.handoff-card {
+  padding: 0.9rem;
+  border: 1px solid #93b6e1;
+  border-radius: 0.6rem;
+  background: #eaf3ff;
+  overflow-wrap: anywhere;
+}
+
+.handoff-card p {
+  margin: 0.4rem 0 0;
+}

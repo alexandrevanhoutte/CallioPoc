@@ -234,3 +234,62 @@ func TestLiveWithoutProvider(t *testing.T) {
 		t.Fatalf("status = %d", response.StatusCode)
 	}
 }
+
+func TestLiveHandoffEvent(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := &fakeVoiceProvider{}
+	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	defer server.Close()
+
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+
+	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 640)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	provider.mu.Lock()
+	s := provider.session
+	provider.mu.Unlock()
+
+	s.events <- realtime.Event{
+		Type: realtime.EventHandoffRequired,
+		Handoff: &realtime.HandoffRequest{
+			Reason: realtime.HandoffOwnerRequested,
+			Context: realtime.HandoffContext{
+				Purpose: "Recruitment",
+				Summary: "Caller wants to speak to the owner about recruitment.",
+			},
+		},
+	}
+	kind, payload, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kind != websocket.MessageText {
+		t.Fatalf("expected JSON event, got %d", kind)
+	}
+	var event struct {
+		Type string `json:"type"`
+		Reason string `json:"reason"`
+		Context struct {
+			CallerName *string `json:"caller_name"`
+			Purpose string `json:"purpose"`
+			Summary string `json:"summary"`
+		} `json:"context"`
+	}
+	if err := json.Unmarshal(payload, &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.Type != "handoff_required" || event.Reason != "owner_requested" ||
+		event.Context.CallerName != nil || event.Context.Purpose != "Recruitment" ||
+		event.Context.Summary == "" {
+		t.Fatalf("unexpected handoff event: %+v", event)
+	}
+}
