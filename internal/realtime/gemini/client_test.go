@@ -31,7 +31,7 @@ func TestMultilingualGeminiConfig(t *testing.T) {
 		!strings.Contains(cfg.Tools[1].FunctionDeclarations[0].Description, "caller’s language") {
 		t.Fatal("Gemini tools need English descriptions")
 	}
-	for _, locale := range []realtime.GreetingLocale{realtime.GreetingFrench, realtime.GreetingEnglish, realtime.GreetingKorean} {
-		if !strings.Contains(locale.OpeningPrompt(), locale.GreetingText()) { t.Fatalf("missing greeting: %s", locale) }
+	for _, locale := range []realtime.Locale{realtime.LocaleFrench, realtime.LocaleEnglish, realtime.LocaleKorean} {
+		if !strings.Contains(realtime.OpeningPrompt(locale), realtime.GreetingText(locale)) { t.Fatalf("missing greeting: %s", locale) }
 	}
 }
