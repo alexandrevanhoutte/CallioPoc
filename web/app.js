@@ -57,7 +57,7 @@ function showCallState(current, state, outcome = "") {
   if (outcome === "decline") callFeedback.textContent = "Owner declined — Callio can take a message.";
   else if (outcome === "no_answer") callFeedback.textContent = "No answer — Callio can take a message.";
   else if (state === "human_active") callFeedback.textContent = "Human takeover simulated — Gemini stopped. No real phone connection.";
-  else if (state === "completed") callFeedback.textContent = "Call ended.";
+  else if (state === "completed") callFeedback.textContent = `Call ended · ${outcome || "completed"} · microphone and AI off.`;
   else if (state === "handoff_required") callFeedback.textContent = "Waiting for owner response.";
 }
 
@@ -111,8 +111,11 @@ async function stopSession(error) {
     transcript.finish();
     handoffControls.hidden = true;
     if (error) callStateLabel.textContent = "Disconnected";
+    else if (current.callState === "completed") callStateLabel.textContent = "Completed · disconnected";
+    else callStateLabel.textContent = "Disconnected";
     signalStatus.textContent = "No active audio input";
     level.value = 0;
+    startButton.textContent = "Start new call";
     startButton.disabled = false;
   }
 }
@@ -125,7 +128,7 @@ async function startMicrophone(current, socket) {
     micStatus.textContent = "Requesting microphone permission…";
     const microphone = new MicrophoneCapture({
       onAudioChunk: (pcm16, rms) => {
-        if (session !== current) return;
+        if (session !== current || current.finishing) return;
         chunks.value = String(Number(chunks.value) + 1);
         const db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
         level.value = Math.max(0, Math.min(100, Math.round((db + 60) * (100 / 54))));
@@ -157,6 +160,7 @@ async function startMicrophone(current, socket) {
 
 startButton.addEventListener("click", async () => {
   startButton.disabled = true;
+  startButton.textContent = "Start conversation";
   modeSelector.disabled = true;
   const live = modeSelector.value === "live";
   micStatus.textContent = "Connecting to Go…";
@@ -170,10 +174,18 @@ startButton.addEventListener("click", async () => {
   handoffControls.hidden = true;
   for (const counter of [chunks, sent, received, dropped, playbackScheduled, playbackDropped, silentChunks, interruptions]) counter.value = "0";
 
-  const current = { socket: null, microphone: null, player: new AudioPlayer(), live, microphoneStarting: false, generationFinished: false, callState: "ai_active", pendingAction: false };
+  const current = { socket: null, microphone: null, player: new AudioPlayer(), live, microphoneStarting: false, generationFinished: false, callState: "ai_active", pendingAction: false, finishing: false, playbackAcknowledged: false };
   current.player.onIdle = () => {
     if (session !== current || !current.generationFinished || current.callState === "human_active") return;
     aiStatus.textContent = "Listening";
+    acknowledgePlayback();
+  };
+  const acknowledgePlayback = () => {
+    if (session !== current || !current.finishing || current.playbackAcknowledged || current.player.sources.size > 0) return;
+    current.playbackAcknowledged = true;
+    if (!current.socket.sendControl("playback_finished")) {
+      void stopSession(new Error("Could not confirm final audio playback"));
+    }
   };
   const socket = new AudioSocket({
     endpoint: live ? "/ws/live" : "/ws/audio",
@@ -206,6 +218,15 @@ startButton.addEventListener("click", async () => {
     onEvent: (event) => {
       if (session !== current) return;
       if (event.type === "transcript") transcript.update(event);
+      if (event.type === "call_finishing") {
+        current.finishing = true;
+        callStateLabel.textContent = "Finishing call…";
+        callFeedback.textContent = `Finishing final audio · ${event.reason || "conversation finished"}`;
+        stopButton.disabled = true;
+        void current.microphone?.stop().catch(error => console.warn("Microphone stop failed", error));
+        // Leave queued audio playing. Only acknowledge after all sources finish.
+        acknowledgePlayback();
+      }
       if (event.type === "call_state") {
         if (!["ai_active", "handoff_required", "human_active", "completed"].includes(event.state)) return;
         showCallState(current, event.state, event.outcome);
@@ -225,6 +246,10 @@ startButton.addEventListener("click", async () => {
       }
       if (event.type === "call_error") {
         current.pendingAction = false;
+        if (event.action === "playback_finished") {
+          void stopSession(new Error(event.error || "Completion was rejected"));
+          return;
+        }
         stopButton.disabled = false;
         callFeedback.textContent = `Command ${event.action || ""} rejected: ${event.error || "Unknown error"}`;
         for (const { button } of handoffButtons) button.disabled = current.callState !== "handoff_required";
