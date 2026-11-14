@@ -5,7 +5,6 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
-	"sync/atomic"
 	"time"
 
 	"github.com/alexandrevanhoutte/CallioPoc/internal/call"
@@ -80,6 +79,3 @@ func (b *liveBridge) watchInactivity(ctx context.Context, timeout time.Duration)
 		}
 	}
 }
-
-// Prevent type reuse from accidentally adding mutex-copy semantics.
-var _ atomic.Bool
