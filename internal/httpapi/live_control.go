@@ -28,6 +28,7 @@ type liveBridge struct {
 	aiSpeaking atomic.Bool
 	lastActivity atomic.Int64
 	finishReason string
+	finishMu sync.Mutex
 }
 
 func (b *liveBridge) writeText(ctx context.Context, data []byte) error {
