@@ -133,14 +133,14 @@ func forwardModel(ctx context.Context, bridge *liveBridge) error {
 				return err
 			}
 		case realtime.EventHandoffRequired:
-			if err := bridge.lifecycle.RequestHandoff(); err != nil {
-				if errors.Is(err, call.ErrInvalidTransition) { continue }
-				return err
-			}
 			if event.Handoff == nil {
 				return errors.New("missing handoff request")
 			}
 			if err := event.Handoff.Validate(); err != nil {
+				return err
+			}
+			if err := bridge.lifecycle.RequestHandoff(); err != nil {
+				if errors.Is(err, call.ErrInvalidTransition) { continue }
 				return err
 			}
 			body, err := json.Marshal(struct {
