@@ -39,6 +39,43 @@ const playbackDropped = document.querySelector("#playback-dropped");
 const silentChunks = document.querySelector("#ai-silent-chunks");
 const interruptions = document.querySelector("#ai-interruptions");
 const echo = document.querySelector("#echo-playback");
+const callStateLabel = document.querySelector("#call-state");
+const callFeedback = document.querySelector("#call-feedback");
+const handoffControls = document.querySelector("#handoff-controls");
+const handoffButtons = [
+  ["#call-accept", "accept"],
+  ["#call-decline", "decline"],
+  ["#call-no-answer", "no_answer"],
+].map(([selector, action]) => ({ button: document.querySelector(selector), action }));
+
+function showCallState(current, state, outcome = "") {
+  current.callState = state;
+  current.pendingAction = false;
+  callStateLabel.textContent = state.replaceAll("_", " ");
+  handoffControls.hidden = state !== "handoff_required";
+  for (const { button } of handoffButtons) button.disabled = state !== "handoff_required";
+  if (outcome === "decline") callFeedback.textContent = "Owner declined — Callio can take a message.";
+  else if (outcome === "no_answer") callFeedback.textContent = "No answer — Callio can take a message.";
+  else if (state === "human_active") callFeedback.textContent = "Human takeover simulated — Gemini stopped. No real phone connection.";
+  else if (state === "completed") callFeedback.textContent = "Call ended.";
+  else if (state === "handoff_required") callFeedback.textContent = "Waiting for owner response.";
+}
+
+function sendHandoffAction(action) {
+  const current = session;
+  if (!current || !current.live || current.callState !== "handoff_required" || current.pendingAction) return;
+  if (!current.socket.sendControl(action)) {
+    callFeedback.textContent = "Could not send command.";
+    return;
+  }
+  current.pendingAction = true;
+  callFeedback.textContent = "Waiting for confirmation…";
+  for (const { button } of handoffButtons) button.disabled = true;
+}
+
+for (const { button, action } of handoffButtons) {
+  button.addEventListener("click", () => sendHandoffAction(action));
+}
 const transcript = new TranscriptView(
   document.querySelector("#transcript-list"),
   document.querySelector("#transcript-status"),
@@ -72,6 +109,7 @@ async function stopSession(error) {
     socketStatus.textContent = error ? "Disconnected (error)" : "Disconnected";
     aiStatus.textContent = error ? readableError(error) : "Idle";
     transcript.finish();
+    handoffControls.hidden = true;
     signalStatus.textContent = "No active audio input";
     level.value = 0;
     startButton.disabled = false;
@@ -126,9 +164,12 @@ startButton.addEventListener("click", async () => {
   signalStatus.textContent = "Waiting for audio chunks…";
   level.value = 0;
   transcript.clear();
+  callStateLabel.textContent = live ? "Connecting" : "Echo test";
+  callFeedback.textContent = "";
+  handoffControls.hidden = true;
   for (const counter of [chunks, sent, received, dropped, playbackScheduled, playbackDropped, silentChunks, interruptions]) counter.value = "0";
 
-  const current = { socket: null, microphone: null, player: new AudioPlayer(), live, microphoneStarting: false, generationFinished: false };
+  const current = { socket: null, microphone: null, player: new AudioPlayer(), live, microphoneStarting: false, generationFinished: false, callState: "ai_active", pendingAction: false };
   current.player.onIdle = () => {
     if (session !== current || !current.generationFinished) return;
     aiStatus.textContent = "Listening";
@@ -136,7 +177,7 @@ startButton.addEventListener("click", async () => {
   const socket = new AudioSocket({
     endpoint: live ? "/ws/live" : "/ws/audio",
     onChunk: (buffer) => {
-      if (session !== current) return;
+      if (session !== current || current.callState === "human_active" || current.callState === "completed") return;
       received.value = String(Number(received.value) + 1);
       if (live && new Uint8Array(buffer).every((byte) => byte === 0)) {
         silentChunks.value = String(Number(silentChunks.value) + 1);
@@ -164,6 +205,28 @@ startButton.addEventListener("click", async () => {
     onEvent: (event) => {
       if (session !== current) return;
       if (event.type === "transcript") transcript.update(event);
+      if (event.type === "call_state") {
+        if (!["ai_active", "handoff_required", "human_active", "completed"].includes(event.state)) return;
+        showCallState(current, event.state, event.outcome);
+        if (event.state === "human_active") {
+          current.player.clear();
+          void current.microphone?.stop().catch((error) => {
+            console.warn("Failed to stop microphone after takeover", error);
+          });
+          current.microphone = null;
+          void current.player.disable().catch((error) => {
+            console.warn("Failed to disable playback after takeover", error);
+          });
+          micStatus.textContent = "Microphone stopped — simulated human takeover";
+          aiStatus.textContent = "AI stopped";
+        }
+        if (event.state === "completed") void stopSession();
+      }
+      if (event.type === "call_error") {
+        current.pendingAction = false;
+        callFeedback.textContent = `Command ${event.action || ""} rejected: ${event.error || "Unknown error"}`;
+        for (const { button } of handoffButtons) button.disabled = current.callState !== "handoff_required";
+      }
       if (event.type === "handoff_required") {
         console.info("Callio handoff_required received", event);
         transcript.addHandoff(event);
@@ -196,6 +259,7 @@ startButton.addEventListener("click", async () => {
     socketStatus.textContent = "Connected";
 
     stopButton.disabled = false;
+    if (live) callStateLabel.textContent = "AI active";
     if (live) aiStatus.textContent = "Greeting / listening…";
     // Start microphone immediately for true full duplex barge-in, including
     // during the initial assistant greeting. Gemini VAD handles activity.
@@ -205,7 +269,18 @@ startButton.addEventListener("click", async () => {
   }
 });
 
-stopButton.addEventListener("click", () => { void stopSession(); });
+stopButton.addEventListener("click", () => {
+  if (!session?.live) {
+    void stopSession();
+    return;
+  }
+  if (!session.socket.sendControl("end_call")) {
+    void stopSession(new Error("Could not send end_call command"));
+    return;
+  }
+  stopButton.disabled = true;
+  callFeedback.textContent = "Ending call…";
+});
 
 echo.addEventListener("change", () => {
   if (!session || session.live) return;
