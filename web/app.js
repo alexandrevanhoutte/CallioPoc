@@ -39,12 +39,6 @@ const playbackDropped = document.querySelector("#playback-dropped");
 const silentChunks = document.querySelector("#ai-silent-chunks");
 const interruptions = document.querySelector("#ai-interruptions");
 const echo = document.querySelector("#echo-playback");
-const handoffSection = document.querySelector("#handoff-section");
-const handoffReason = document.querySelector("#handoff-reason");
-const handoffCaller = document.querySelector("#handoff-caller");
-const handoffPurpose = document.querySelector("#handoff-purpose");
-const handoffSummary = document.querySelector("#handoff-summary");
-const handoffContact = document.querySelector("#handoff-contact");
 const transcript = new TranscriptView(
   document.querySelector("#transcript-list"),
   document.querySelector("#transcript-status"),
@@ -132,7 +126,6 @@ startButton.addEventListener("click", async () => {
   signalStatus.textContent = "Waiting for audio chunks…";
   level.value = 0;
   transcript.clear();
-  handoffSection.hidden = true;
   for (const counter of [chunks, sent, received, dropped, playbackScheduled, playbackDropped, silentChunks, interruptions]) counter.value = "0";
 
   const current = { socket: null, microphone: null, player: new AudioPlayer(), live, microphoneStarting: false, generationFinished: false };
@@ -173,13 +166,7 @@ startButton.addEventListener("click", async () => {
       if (event.type === "transcript") transcript.update(event);
       if (event.type === "handoff_required") {
         console.info("Callio handoff_required received", event);
-        const details = event.context || {};
-        handoffReason.textContent = `Reason: ${event.reason || ""}`;
-        handoffCaller.textContent = `Caller: ${details.caller_name || "Not provided"}`;
-        handoffPurpose.textContent = `Purpose: ${details.purpose || ""}`;
-        handoffSummary.textContent = `Summary: ${details.summary || ""}`;
-        handoffContact.textContent = [details.company, details.email, details.phone_number].filter(Boolean).join(" · ");
-        handoffSection.hidden = false;
+        transcript.addHandoff(event);
       }
       if (event.type === "turn_end") {
         current.generationFinished = true;
