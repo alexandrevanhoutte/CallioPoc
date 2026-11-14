@@ -20,7 +20,7 @@ type Config struct {
 	AIProvider   string
 	GeminiAPIKey string
 	GeminiModel  string
-	GreetingLocale realtime.GreetingLocale
+	GreetingLocale realtime.Locale
 }
 
 func Load() (Config, error) {
@@ -51,9 +51,9 @@ func Load() (Config, error) {
 	}
 	localeValue := os.Getenv("CALL_GREETING_LOCALE")
 	if localeValue == "" {
-		localeValue = string(realtime.GreetingFrench)
+		localeValue = realtime.LocaleFrench.String()
 	}
-	locale, err := realtime.NewGreetingLocale(localeValue)
+	locale, err := realtime.NewLocale(localeValue)
 	if err != nil {
 		return Config{}, fmt.Errorf("invalid CALL_GREETING_LOCALE: %w", err)
 	}
