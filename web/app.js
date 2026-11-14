@@ -41,6 +41,47 @@ const interruptions = document.querySelector("#ai-interruptions");
 const echo = document.querySelector("#echo-playback");
 const callStateLabel = document.querySelector("#call-state");
 const callFeedback = document.querySelector("#call-feedback");
+const summaryPanel = document.querySelector("#call-summary");
+const summaryStatus = document.querySelector("#summary-status");
+const summaryDetails = document.querySelector("#summary-details");
+
+function showSummary(event) {
+  if (event.type === "summary_error") {
+    summaryStatus.textContent = "Summary unavailable";
+    summaryDetails.hidden = true;
+    return;
+  }
+  const summary = event.summary;
+  if (!summary || typeof summary.summary !== "string" || summary.summary.length === 0) {
+    summaryStatus.textContent = "Summary unavailable";
+    summaryDetails.hidden = true;
+    return;
+  }
+  summaryStatus.textContent = "Generated summary";
+  summaryDetails.hidden = false;
+  const value = (key) => typeof summary[key] === "string" && summary[key].length > 0
+    ? summary[key] : "Unknown";
+  document.querySelector("#summary-caller").textContent = value("caller_name");
+  document.querySelector("#summary-reason").textContent = value("reason");
+  document.querySelector("#summary-urgency").textContent = value("urgency");
+  document.querySelector("#summary-handoff").textContent = summary.handoff_requested === true ? "Yes" : "No";
+  document.querySelector("#summary-text").textContent = summary.summary;
+  const actions = document.querySelector("#summary-actions");
+  actions.replaceChildren();
+  const items = Array.isArray(summary.follow_up_actions) ? summary.follow_up_actions : [];
+  if (items.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = "No follow-up required";
+    actions.append(li);
+  }
+  for (const action of items) {
+    if (typeof action !== "string" || action.length === 0) continue;
+    const li = document.createElement("li");
+    li.textContent = action;
+    actions.append(li);
+  }
+}
+
 const handoffControls = document.querySelector("#handoff-controls");
 const handoffButtons = [
   ["#call-accept", "accept"],
@@ -171,6 +212,9 @@ startButton.addEventListener("click", async () => {
   signalStatus.textContent = "Waiting for audio chunks…";
   level.value = 0;
   transcript.clear();
+  summaryPanel.hidden = true;
+  summaryDetails.hidden = true;
+  summaryStatus.textContent = "Waiting for call completion…";
   callStateLabel.textContent = live ? "Connecting" : "Echo test";
   callFeedback.textContent = "";
   handoffControls.hidden = true;
@@ -222,6 +266,11 @@ startButton.addEventListener("click", async () => {
     onEvent: (event) => {
       if (session !== current) return;
       if (event.type === "transcript") transcript.update(event);
+      if (event.type === "call_summary" || event.type === "summary_error") {
+        showSummary(event);
+        void stopSession();
+        return;
+      }
       if (event.type === "call_finishing") {
         current.finishing = true;
         callStateLabel.textContent = "Finishing call…";
@@ -246,7 +295,13 @@ startButton.addEventListener("click", async () => {
           micStatus.textContent = "Microphone stopped — simulated human takeover";
           aiStatus.textContent = "AI stopped";
         }
-        if (event.state === "completed") void stopSession();
+        if (event.state === "completed") {
+          current.finishing = true;
+          stopButton.disabled = true;
+          summaryPanel.hidden = false;
+          summaryStatus.textContent = "Generating summary…";
+          void current.microphone?.stop().catch(error => console.warn("Microphone stop failed", error));
+        }
       }
       if (event.type === "call_error") {
         current.pendingAction = false;

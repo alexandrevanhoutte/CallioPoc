@@ -2,7 +2,6 @@ package realtime
 
 import (
 	"errors"
-	"strings"
 )
 
 // HandoffReason is an internal enum; its string form is the wire format.
@@ -55,10 +54,10 @@ func (r HandoffRequest) Validate() error {
 	if r.Reason != HandoffOwnerRequested && r.Reason != HandoffAIUnable {
 		return errors.New("invalid handoff reason")
 	}
-	if strings.TrimSpace(r.Context.Purpose) == "" {
+	if len(r.Context.Purpose) == 0 {
 		return errors.New("handoff purpose is required")
 	}
-	if strings.TrimSpace(r.Context.Summary) == "" {
+	if len(r.Context.Summary) == 0 {
 		return errors.New("handoff summary is required")
 	}
 	return nil

@@ -31,6 +31,7 @@ Open <http://localhost:8080>. The server binds to loopback only; localhost is a 
 | `AI_PROVIDER` | `gemini` | Provider; only Gemini implemented |
 | `GEMINI_API_KEY` | empty | Secret, server-side only |
 | `GEMINI_MODEL` | `gemini-3.8-live` | Live conversation model |
+| `GEMINI_SUMMARY_MODEL` | `gemini-3.5-flash-lite` | Text model used only after an AI call completes |
 | `CALL_GREETING_LOCALE` | `fr-FR` if unset | First greeting only: `fr-FR`, `en-US`, or `ko-KR` (`.env.example` uses `ko-KR`) |
 
 To switch model, change `GEMINI_MODEL`. Future providers can implement `realtime.VoiceProvider` and `realtime.VoiceSession` without changing transport handlers.
@@ -166,3 +167,13 @@ Model-facing instructions and tool descriptions are in English. Set `CALL_GREETI
 The selected locale changes **only the initial spoken greeting**. Afterwards Callio is instructed to match the caller's actual spoken language, including switching Korean → English → French without reconnecting or translating unsolicited. Restart the Go process and start a new call after changing `.env`. Prompts are provider-neutral and defined in `internal/realtime/prompt.go`. No frontend selector or language-detection service is introduced.
 
 Manual test: start with `ko-KR` and listen for the Korean greeting; reply in English, then French, and verify that each response follows your language. Also test `request_handoff`, `request_call_end` and Echo. Live language switching is model-dependent and requires manual validation.
+
+## CI-09 — Post-call summary
+
+After an AI call completes, Callio closes the live voice session and requests a separate short **French** summary from `GEMINI_SUMMARY_MODEL`. The summary uses finalized caller/assistant transcript segments plus the requested handoff and end reason. It contains the caller name and call reason when known, urgency (`unknown`, `low`, `normal`, `high`), follow-up actions, whether a handoff was requested, and a factual French paragraph. Unknown details remain unknown.
+
+The server sends `call_state: completed` followed by either `call_summary` or `summary_error` over the existing WebSocket; the browser waits for this final event before disconnecting and displays **Call Summary** below the transcript. The summary request uses the low-latency Gemini 3.5 Flash-Lite model by default, retries one transient upstream 5xx error with a short backoff, and has a **25-second timeout**; failure does not roll back completion. When no transcript and no handoff exist, a factual empty-data summary is returned without a model request. The result is **in-memory only**; CI-10 will implement persistence.
+
+This text request uses the same server-side `GEMINI_API_KEY` but a separate model and may incur additional API usage. The live model name should not be used for text-only `GEMINI_SUMMARY_MODEL`. No call data is stored on disk. Transcripts sent to the configured text model may contain personal data; review consent and retention requirements before deploying outside this local POC.
+
+Testing: `go test ./...`, `go test -race ./...`, and a manual call with French/English/Korean speech. Verify summary content, handoff state, manual and automatic hangup, the “Generating summary…” UI state, and that an unavailable text model displays “Summary unavailable” without trapping the call.

@@ -21,6 +21,7 @@ const (
 	maxLiveMessageBytes = 4096
 	farewellGrace       = 2 * time.Second
 	defaultIdleTimeout  = 60 * time.Second
+	summaryTimeout = 25 * time.Second
 )
 
 // endPhase only tracks the audio shutdown handshake; CallLifecycle remains the
@@ -39,6 +40,9 @@ type liveSession struct {
 	conn      *websocket.Conn
 	voice     realtime.VoiceSession
 	lifecycle *call.Lifecycle
+	summarizer call.Summarizer
+	transcript realtime.Transcript
+	handoff *realtime.HandoffRequest
 
 	writes sync.Mutex
 	mu     sync.Mutex
@@ -53,7 +57,7 @@ type liveSession struct {
 
 // The live protocol uploads 16 kHz mono PCM16 (640 bytes) and receives
 // 24 kHz PCM16 audio plus JSON control/transcript messages.
-func audioLive(appCtx context.Context, provider realtime.VoiceProvider) http.HandlerFunc {
+func audioLive(appCtx context.Context, provider realtime.VoiceProvider, summarizer call.Summarizer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if provider == nil {
 			http.Error(w, "Live provider is not configured", http.StatusServiceUnavailable)
@@ -92,6 +96,7 @@ func audioLive(appCtx context.Context, provider realtime.VoiceProvider) http.Han
 			conn:         conn,
 			voice:        voice,
 			lifecycle:    call.NewLifecycle(call.MockHandoff{}),
+			summarizer: summarizer,
 			lastActivity: time.Now(),
 		}
 		go session.watchInactivity(ctx, configuredIdleTimeout())
@@ -116,7 +121,7 @@ func audioLive(appCtx context.Context, provider realtime.VoiceProvider) http.Han
 		// until the simulated human ends the call.
 		for {
 			result := <-results
-			if result.source == "model" && session.lifecycle.State() == call.HumanActive {
+			if result.source == "model" && (session.lifecycle.State() == call.HumanActive || session.lifecycle.State() == call.Completed) {
 				continue
 			}
 			if result.err != nil && !errors.Is(result.err, context.Canceled) && appCtx.Err() == nil {
@@ -210,7 +215,7 @@ func (s *liveSession) readBrowser(ctx context.Context) error {
 			if err := s.sendState(ctx, reason.String()); err != nil {
 				return err
 			}
-			return nil
+			return s.sendSummary(ctx, reason)
 		case "accept":
 			actionErr = s.lifecycle.Accept(ctx)
 			if actionErr == nil {
@@ -243,7 +248,7 @@ func (s *liveSession) readBrowser(ctx context.Context) error {
 				if err := s.sendState(ctx, "ended"); err != nil {
 					return err
 				}
-				return nil
+				return s.sendSummary(ctx, call.EndManual)
 			}
 		default:
 			actionErr = errors.New("unknown control command")
@@ -304,6 +309,9 @@ func (s *liveSession) readModel(ctx context.Context) error {
 				continue
 			}
 			s.touch()
+			s.mu.Lock()
+			s.transcript.Apply(*event.Transcript)
+			s.mu.Unlock()
 			if err := s.send(ctx, struct {
 				Type string `json:"type"`
 				*realtime.TranscriptSegment
@@ -339,6 +347,10 @@ func (s *liveSession) readModel(ctx context.Context) error {
 			}); err != nil {
 				return err
 			}
+			s.mu.Lock()
+			copyHandoff := *event.Handoff
+			s.handoff = &copyHandoff
+			s.mu.Unlock()
 			slog.Info("handoff_required sent to browser", "reason", event.Handoff.Reason.String())
 			if err := s.sendState(ctx, "requested"); err != nil {
 				return err
@@ -377,6 +389,45 @@ func (s *liveSession) readModel(ctx context.Context) error {
 			return errors.New("unexpected provider event type")
 		}
 	}
+}
+
+// sendSummary runs after the lifecycle has completed, so a model failure can
+// never prevent the call from ending. The browser keeps this socket open until
+// it receives the summary or summary_error event.
+func (s *liveSession) sendSummary(ctx context.Context, reason call.EndReason) error {
+	// Close the expensive live audio session before the independent text request.
+	_ = s.voice.Close()
+	s.mu.Lock()
+	input := call.SummaryInput{
+		Transcript: s.transcript.Finalized(),
+		Handoff: s.handoff,
+		EndReason: reason,
+	}
+	s.mu.Unlock()
+	if s.summarizer == nil {
+		return s.send(ctx, struct {
+			Type string `json:"type"`
+			Error string `json:"error"`
+		}{Type: "summary_error", Error: "Summary service is unavailable"})
+	}
+
+	summaryCtx, cancel := context.WithTimeout(ctx, summaryTimeout)
+	defer cancel()
+	summary, err := s.summarizer.Summarize(summaryCtx, input)
+	if err == nil { err = summary.Validate() }
+	if err != nil {
+		slog.Warn("call summary unavailable", "error", err)
+		return s.send(ctx, struct {
+			Type string `json:"type"`
+			Error string `json:"error"`
+		}{Type: "summary_error", Error: "Unable to generate a call summary"})
+	}
+	// The backend owns handoff state; a generated summary cannot overwrite it.
+	summary.HandoffRequested = input.Handoff != nil
+	return s.send(ctx, struct {
+		Type string `json:"type"`
+		Summary call.Summary `json:"summary"`
+	}{Type: "call_summary", Summary: summary})
 }
 
 func (s *liveSession) touch() {
