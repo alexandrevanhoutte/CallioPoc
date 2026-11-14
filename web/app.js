@@ -52,6 +52,7 @@ async function stopSession(error) {
   if (!session) return;
   const current = session;
   session = null;
+  clearTimeout(current.greetingTimer);
   startButton.disabled = true;
   stopButton.disabled = true;
   modeSelector.disabled = false;
@@ -72,6 +73,44 @@ async function stopSession(error) {
   }
 }
 
+async function startMicrophone(current, socket) {
+  if (session !== current || current.microphone || current.microphoneStarting) return;
+  current.microphoneStarting = true;
+  const live = current.live;
+  try {
+    micStatus.textContent = "Requesting microphone permission…";
+    const microphone = new MicrophoneCapture({
+      onAudioChunk: (pcm16, rms) => {
+        if (session !== current) return;
+        chunks.value = String(Number(chunks.value) + 1);
+        const db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
+        level.value = Math.max(0, Math.min(100, Math.round((db + 60) * (100 / 54))));
+        signalStatus.textContent = rms >= 0.008
+          ? "Sound detected" : "Silence / low input (chunks arriving)";
+        if (socket.send(pcm16)) {
+          sent.value = String(Number(sent.value) + 1);
+        } else {
+          dropped.value = String(Number(dropped.value) + 1);
+        }
+      },
+      onError: (error) => { if (session === current) void stopSession(error); },
+    });
+    current.microphone = microphone;
+    await microphone.start();
+    if (session !== current) {
+      await microphone.stop();
+      return;
+    }
+    micStatus.textContent = "Recording";
+    aiStatus.textContent = live ? "Listening" : "Echo test";
+    if (!live) echo.disabled = false;
+  } catch (error) {
+    if (session === current) await stopSession(error);
+  } finally {
+    current.microphoneStarting = false;
+  }
+}
+
 startButton.addEventListener("click", async () => {
   startButton.disabled = true;
   modeSelector.disabled = true;
@@ -83,7 +122,7 @@ startButton.addEventListener("click", async () => {
   level.value = 0;
   for (const counter of [chunks, sent, received, dropped, playbackScheduled, playbackDropped, silentChunks, interruptions]) counter.value = "0";
 
-  const current = { socket: null, microphone: null, player: new AudioPlayer(), live };
+  const current = { socket: null, microphone: null, player: new AudioPlayer(), live, greetingTimer: null, microphoneStarting: false };
   const socket = new AudioSocket({
     endpoint: live ? "/ws/live" : "/ws/audio",
     onChunk: (buffer) => {
@@ -111,7 +150,19 @@ startButton.addEventListener("click", async () => {
     },
     onEvent: (event) => {
       if (session !== current) return;
-      if (event.type === "turn_end") aiStatus.textContent = "Listening";
+      if (event.type === "turn_end") {
+        if (live && !current.microphone && !current.microphoneStarting) {
+          // Gemini may finish sending its greeting before playback finishes.
+          // Do not begin uploading caller audio until the greeting is audible.
+          const waitSeconds = Math.max(0, current.player.nextStart - (current.player.context?.currentTime ?? 0));
+          aiStatus.textContent = "Finishing greeting…";
+          current.greetingTimer = setTimeout(() => {
+            if (session === current) void startMicrophone(current, socket);
+          }, waitSeconds * 1000);
+        } else {
+          aiStatus.textContent = "Listening";
+        }
+      }
       if (event.type === "interrupted") {
         interruptions.value = String(Number(interruptions.value) + 1);
         current.player.clear();
@@ -133,35 +184,13 @@ startButton.addEventListener("click", async () => {
     if (session !== current) return;
     socketStatus.textContent = "Connected";
 
-    const microphone = new MicrophoneCapture({
-      onAudioChunk: (pcm16, rms) => {
-        if (session !== current) return;
-        chunks.value = String(Number(chunks.value) + 1);
-        const db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
-        level.value = Math.max(0, Math.min(100, Math.round((db + 60) * (100 / 54))));
-        signalStatus.textContent = rms >= 0.008
-          ? "Sound detected" : "Silence / low input (chunks arriving)";
-        if (socket.send(pcm16)) {
-          sent.value = String(Number(sent.value) + 1);
-        } else {
-          dropped.value = String(Number(dropped.value) + 1);
-        }
-        if (live && aiStatus.textContent === "Connecting to Gemini…") {
-          aiStatus.textContent = "Listening";
-        }
-      },
-      onError: (error) => { if (session === current) void stopSession(error); },
-    });
-    current.microphone = microphone;
-    micStatus.textContent = "Requesting microphone permission…";
-    await microphone.start();
-    if (session !== current) {
-      await microphone.stop();
-      return;
-    }
-    micStatus.textContent = "Recording";
     stopButton.disabled = false;
-    if (!live) echo.disabled = false;
+    if (live) {
+      micStatus.textContent = "Waiting for assistant greeting…";
+      aiStatus.textContent = "Assistant greeting…";
+    } else {
+      await startMicrophone(current, socket);
+    }
   } catch (error) {
     if (session === current) await stopSession(error);
   }

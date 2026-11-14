@@ -37,13 +37,15 @@ To switch model, change `GEMINI_MODEL`. Future providers can implement `realtime
 ## Testing
 
 1. Select **Echo** for the CI-03 loopback audio test (no API key needed).
-2. Select **Gemini Live** and click **Start conversation**. Approve microphone access.
-3. Speak French. The **Chunks sent** counter increases; the AI should reply audibly in French. **Chunks received** counts the output chunks.
+2. Select **Gemini Live** and click **Start conversation**. The assistant speaks **first** with a short greeting; after the greeting finishes, the browser requests microphone permission and begins capturing the caller.
+3. Speak French after the greeting. Gemini uses **500 ms** of detected silence to end your turn; responses are instructed to stay within one or two short French sentences. The **Chunks sent** counter increases after microphone access; **Chunks received** counts output chunks.
 4. Wear headphones to avoid sound feedback. Gemini audio playback is enabled on the user click; Echo playback remains an optional toggle.
 5. Click **Stop**, then repeat. Verify microphone tracks, WebSocket and Gemini session all close.
 6. Stop the backend during a session; it should release provider/browser resources.
 
 **Audio contract:** Browser sends 20 ms chunks of mono PCM16 signed little-endian 16 kHz, **640 bytes/message**, to `GET /ws/live`. Go sends Gemini audio as binary PCM16 mono **24 kHz**, normally 960-byte chunks (final chunk can be shorter); JSON text messages carry non-audio events (`turn_end`, future transcripts). `GET /ws/audio` retains the existing 16 kHz echo protocol.
+
+The browser's AI status indicator is for local testing only, not the future telephone caller. The assistant greeting is a separate initial content turn; microphone streaming starts after the welcome audio is scheduled and played. The **500 ms** silence timeout may require adjustment if it interrupts natural pauses. CI-05 will improve full-duplex interruption handling.
 
 The interface defines `EventType` as numeric `iota + 1` with `NewEventType(string)` and `String()`. CI-04 now forwards Gemini's basic `interrupted` notification and clears queued playback. CI-05 adds advanced interruption handling; CI-06 adds transcription.
 
