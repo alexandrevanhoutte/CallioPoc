@@ -137,6 +137,7 @@ func (s *session) Receive(ctx context.Context) (realtime.Event, error) {
 			continue
 		}
 		if message.ToolCall != nil {
+			slog.Info("Gemini tool call message received", "calls", len(message.ToolCall.FunctionCalls))
 			if err := s.handleToolCalls(message.ToolCall); err != nil {
 				return realtime.Event{}, err
 			}
@@ -168,6 +169,7 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 		if call == nil {
 			continue
 		}
+		slog.Info("Gemini function requested", "name", call.Name, "call_id", call.ID)
 		response := &genai.FunctionResponse{ID: call.ID, Name: call.Name}
 		if call.Name != handoffToolName {
 			response.Response = map[string]any{"error": "unsupported tool"}
@@ -182,7 +184,11 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 					return err
 				}
 				if emit {
+					slog.Info("handoff accepted", "reason", request.Reason.String(), "call_id", call.ID)
 					s.turns.pending = append(s.turns.pending, realtime.Event{Type: realtime.EventHandoffRequired, Handoff: &request})
+				}
+				if !emit {
+					slog.Info("duplicate handoff ignored", "call_id", call.ID)
 				}
 				response.Response = map[string]any{"output": "handoff request recorded; no transfer performed"}
 			}
