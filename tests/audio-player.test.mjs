@@ -89,3 +89,19 @@ test("interruption flushes the old playback queue", async () => {
   assert.equal(player.play(new ArrayBuffer(960), 24000), true);
   await player.disable();
 });
+
+test("audio idle callback fires only after the final scheduled source finishes", async () => {
+  const player = new AudioPlayer();
+  let idle = 0;
+  player.onIdle = () => { idle++; };
+  await player.enable();
+  assert.equal(player.play(new ArrayBuffer(960), 24000), true);
+  assert.equal(player.play(new ArrayBuffer(960), 24000), true);
+  const sources = Array.from(player.sources);
+  sources[0].onended();
+  assert.equal(idle, 0);
+  sources[1].onended();
+  assert.equal(idle, 1);
+  await player.disable();
+  assert.equal(idle, 1, "cleanup does not trigger another idle callback");
+});

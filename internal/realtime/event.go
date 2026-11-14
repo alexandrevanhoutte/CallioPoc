@@ -50,6 +50,7 @@ func (e EventType) String() string {
 // Audio must be little-endian, mono, signed PCM16 at SampleRate hertz.
 type Event struct {
 	Type       EventType
+	TurnID     uint64 // Local generation ID for ordering and diagnostics, not transmitted with PCM.
 	Audio      []byte
 	SampleRate int
 	Text       string
