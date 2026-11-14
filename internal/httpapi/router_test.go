@@ -1,6 +1,7 @@
 package httpapi_test
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -14,7 +15,7 @@ func TestRouter(t *testing.T) {
 	t.Parallel()
 
 	files := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<h1>CallioPoc</h1>")}}
-	router := httpapi.NewRouter(files)
+	router := httpapi.NewRouter(context.Background(), files)
 
 	for _, tc := range []struct {
 		name   string

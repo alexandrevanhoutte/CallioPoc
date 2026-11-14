@@ -49,3 +49,9 @@ progress {
 .note {
   color: #596579;
 }
+
+.counters {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
