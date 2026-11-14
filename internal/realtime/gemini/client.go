@@ -11,9 +11,7 @@ import (
 )
 
 const (
-	inputChunkBytes  = 640 // PCM16 mono 16 kHz, 20 ms
-	outputChunkBytes = 960 // PCM16 mono 24 kHz, 20 ms
-	outputSampleRate = 24000
+	inputChunkBytes = 640 // PCM16 mono 16 kHz, 20 ms
 
 	frenchInstructions = "Tu es Callio, un assistant IA qui décroche les appels entrants pour son correspondant. " +
 		"Parle uniquement en français, avec un ton naturel et chaleureux. " +
@@ -58,8 +56,8 @@ func (p *Provider) Open(ctx context.Context) (realtime.VoiceSession, error) {
 		return nil, fmt.Errorf("open Gemini Live session: %w", err)
 	}
 
-	// Trigger the initial receptionist greeting. The web client waits until
-	// playback ends before starting microphone capture.
+	// Trigger the receptionist greeting. The browser starts its microphone
+	// immediately so that the caller can interrupt this opening turn.
 	if err := live.SendClientContent(genai.LiveClientContentInput{
 		Turns: []*genai.Content{{
 			Role:  "user",
@@ -96,10 +94,8 @@ type session struct {
 	once      sync.Once
 	closeErr  error
 
-	// Only the receiver goroutine accesses turn state and pending events.
-	pending     []realtime.Event
-	turnID      uint64
-	turnActive  bool
+	// Only Receive accesses this; the send goroutine never touches it.
+	turns turnState
 }
 
 func (s *session) SendAudio(ctx context.Context, pcm16 []byte) error {
@@ -121,10 +117,7 @@ func (s *session) Receive(ctx context.Context) (realtime.Event, error) {
 		if err := ctx.Err(); err != nil {
 			return realtime.Event{}, err
 		}
-		if len(s.pending) > 0 {
-			event := s.pending[0]
-			s.pending[0] = realtime.Event{}
-			s.pending = s.pending[1:]
+		if event, ok := s.turns.next(); ok {
 			return event, nil
 		}
 		message, err := s.live.Receive()
@@ -134,57 +127,10 @@ func (s *session) Receive(ctx context.Context) (realtime.Event, error) {
 		if message == nil || message.ServerContent == nil {
 			continue
 		}
-		if err := s.queueContent(message.ServerContent); err != nil {
+		if err := s.turns.process(message.ServerContent); err != nil {
 			return realtime.Event{}, err
 		}
 	}
-}
-
-// queueContent serializes model turns into ordered, provider-independent events.
-// Gemini reports an interrupted turn via Interrupted followed by TurnComplete;
-// the latter must not be treated as completion of a fresh response.
-func (s *session) queueContent(content *genai.LiveServerContent) error {
-	if content == nil {
-		return nil
-	}
-	if content.Interrupted {
-		// In particular, discard audio chunks from a large SDK message that
-		// have not been forwarded to the browser yet.
-		s.pending = []realtime.Event{{Type: realtime.EventInterrupted, TurnID: s.turnID}}
-		s.turnActive = false
-		return nil
-	}
-	if content.ModelTurn != nil {
-		for _, part := range content.ModelTurn.Parts {
-			if part == nil || part.InlineData == nil || len(part.InlineData.Data) == 0 {
-				continue
-			}
-			audio := part.InlineData.Data
-			if len(audio)%2 != 0 {
-				return errors.New("invalid Gemini PCM16 output length")
-			}
-			if !s.turnActive {
-				s.turnID++
-				s.turnActive = true
-			}
-			// Keep the existing 20 ms wire chunks. The frontend can queue
-			// them, and a later interruption clears this pending list.
-			for offset := 0; offset < len(audio); offset += outputChunkBytes {
-				end := min(offset+outputChunkBytes, len(audio))
-				s.pending = append(s.pending, realtime.Event{
-					Type:       realtime.EventAudio,
-					TurnID:     s.turnID,
-					Audio:      append([]byte(nil), audio[offset:end]...),
-					SampleRate: outputSampleRate,
-				})
-			}
-		}
-	}
-	if content.TurnComplete && s.turnActive {
-		s.pending = append(s.pending, realtime.Event{Type: realtime.EventTurnEnd, TurnID: s.turnID})
-		s.turnActive = false
-	}
-	return nil
 }
 
 func (s *session) Close() error {
