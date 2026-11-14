@@ -14,6 +14,7 @@ const (
 	EventTranscript
 	EventTurnEnd
 	EventInterrupted
+	EventHandoffRequired
 )
 
 func NewEventType(value string) (EventType, error) {
@@ -26,6 +27,8 @@ func NewEventType(value string) (EventType, error) {
 		return EventTurnEnd, nil
 	case "interrupted":
 		return EventInterrupted, nil
+	case "handoff_required":
+		return EventHandoffRequired, nil
 	default:
 		return 0, fmt.Errorf("invalid event type: %q", value)
 	}
@@ -41,6 +44,8 @@ func (e EventType) String() string {
 		return "turn_end"
 	case EventInterrupted:
 		return "interrupted"
+	case EventHandoffRequired:
+		return "handoff_required"
 	default:
 		return "unknown"
 	}
@@ -55,6 +60,7 @@ type Event struct {
 	SampleRate int
 	Text       string // Used by legacy/non-transcript control events.
 	Transcript *TranscriptSegment
+	Handoff    *HandoffRequest
 }
 
 // VoiceProvider opens one live conversation for each browser session.

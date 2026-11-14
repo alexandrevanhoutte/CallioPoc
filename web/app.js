@@ -164,6 +164,10 @@ startButton.addEventListener("click", async () => {
     onEvent: (event) => {
       if (session !== current) return;
       if (event.type === "transcript") transcript.update(event);
+      if (event.type === "handoff_required") {
+        console.info("Callio handoff_required received", event);
+        transcript.addHandoff(event);
+      }
       if (event.type === "turn_end") {
         current.generationFinished = true;
         aiStatus.textContent = current.player.sources.size > 0
