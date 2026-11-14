@@ -133,3 +133,27 @@ Control messages are JSON text frames (`accept`, `decline`, `no_answer`, `end_ca
 `internal/call.HandoffProvider` is an interchangeable interface; `MockHandoff` is the only implementation for this POC. **No real transfer or telephony availability check is performed.** The no-answer button is a manual simulation, not an automatic timeout. The existing CI-07 detector allows one handoff event per Gemini session; repeated handoffs after declining are not yet supported.
 
 Run `go test ./...` and `node --test tests/*.test.mjs` to verify the lifecycle and WebSocket behavior without an API key.
+
+## CI-15: automatic call completion
+
+Gemini Live has a `request_call_end` function. When the caller clearly finishes
+the conversation, Callio should say goodbye once and request completion.
+The backend sends `call_finishing` after the final assistant turn (or a bounded
+2-second fallback); the frontend drains its audio queue and responds with
+`{"type":"playback_finished"}`. Go then confirms `call_state: completed`,
+closes Gemini and the WebSocket, and the UI displays a disconnected call with
+**Start new call** enabled. A new call creates a new provider, WebSocket, audio
+player and transcript rather than reopening the completed lifecycle.
+
+If neither side produces conversational events for an idle period, the backend
+requests automatic completion. The default is **60 seconds**; configure
+`CALL_IDLE_TIMEOUT_SECONDS` to an integer from 10 to 3600. Silent PCM upload
+frames do **not** reset the timer. Timeout is suspended during simulated
+human takeover and pending handoffs.
+
+This is browser-simulated call completion, not a real phone-network hangup.
+The model's ability to choose `request_call_end` depends on live behavior.
+Review the manual goodbye, silence, interruption, handoff and repeated-call
+scenarios before merging.
+
+Tests: `go test ./...` and `node --test tests/*.test.mjs`.
