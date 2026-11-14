@@ -7,7 +7,7 @@ import (
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
 )
 
-func TestGreetingLocale(t *testing.T) {
+func TestLocale(t *testing.T) {
 	for _, tc := range []struct {
 		value string
 		greeting string
@@ -16,12 +16,13 @@ func TestGreetingLocale(t *testing.T) {
 		{"en-US", "Hello"},
 		{"ko-KR", "안녕하세요"},
 	} {
-		locale, err := realtime.NewGreetingLocale(tc.value)
+		locale, err := realtime.NewLocale(tc.value)
 		if err != nil { t.Fatal(err) }
-		if locale.GreetingText() == "" || !strings.Contains(locale.GreetingText(), tc.greeting) {
+		if locale.String() != tc.value { t.Fatalf("Locale.String() = %q, want %q", locale.String(), tc.value) }
+		if realtime.GreetingText(locale) == "" || !strings.Contains(locale.GreetingText(), tc.greeting) {
 			t.Fatalf("missing %s greeting", tc.value)
 		}
-		prompt := locale.OpeningPrompt()
+		prompt := realtime.OpeningPrompt(locale)
 		if !strings.Contains(prompt, locale.GreetingText()) || !strings.Contains(prompt, "caller’s language") && !strings.Contains(prompt, "caller's language") {
 			t.Fatalf("opening prompt does not preserve greeting and language switching: %s", prompt)
 		}
@@ -44,4 +45,15 @@ func TestMultilingualInstructions(t *testing.T) {
 		if err != nil || !strings.Contains(prompt, "caller's language") { t.Fatalf("outcome %s: %v", outcome, err) }
 	}
 	if _, err := realtime.HandoffOutcomePrompt("invalid"); err == nil { t.Fatal("invalid outcome accepted") }
+}
+
+func TestLocaleInvalidString(t *testing.T) {
+	if realtime.LocaleFrench != 1 || realtime.LocaleEnglish != 2 || realtime.LocaleKorean != 3 {
+		t.Fatal("Locale constants must use iota + 1")
+	}
+	for _, value := range []realtime.Locale{0, 4, 255} {
+		if got := value.String(); got != "unknown" {
+			t.Fatalf("invalid Locale(%d).String() = %q", value, got)
+		}
+	}
 }
