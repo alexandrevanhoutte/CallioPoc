@@ -110,6 +110,7 @@ async function stopSession(error) {
     aiStatus.textContent = error ? readableError(error) : "Idle";
     transcript.finish();
     handoffControls.hidden = true;
+    if (error) callStateLabel.textContent = "Disconnected";
     signalStatus.textContent = "No active audio input";
     level.value = 0;
     startButton.disabled = false;
@@ -171,7 +172,7 @@ startButton.addEventListener("click", async () => {
 
   const current = { socket: null, microphone: null, player: new AudioPlayer(), live, microphoneStarting: false, generationFinished: false, callState: "ai_active", pendingAction: false };
   current.player.onIdle = () => {
-    if (session !== current || !current.generationFinished) return;
+    if (session !== current || !current.generationFinished || current.callState === "human_active") return;
     aiStatus.textContent = "Listening";
   };
   const socket = new AudioSocket({
@@ -224,6 +225,7 @@ startButton.addEventListener("click", async () => {
       }
       if (event.type === "call_error") {
         current.pendingAction = false;
+        stopButton.disabled = false;
         callFeedback.textContent = `Command ${event.action || ""} rejected: ${event.error || "Unknown error"}`;
         for (const { button } of handoffButtons) button.disabled = current.callState !== "handoff_required";
       }
@@ -231,12 +233,12 @@ startButton.addEventListener("click", async () => {
         console.info("Callio handoff_required received", event);
         transcript.addHandoff(event);
       }
-      if (event.type === "turn_end") {
+      if (event.type === "turn_end" && current.callState !== "human_active") {
         current.generationFinished = true;
         aiStatus.textContent = current.player.sources.size > 0
           ? "Finishing playback…" : "Listening";
       }
-      if (event.type === "interrupted") {
+      if (event.type === "interrupted" && current.callState !== "human_active") {
         interruptions.value = String(Number(interruptions.value) + 1);
         current.generationFinished = false;
         current.player.clear();
