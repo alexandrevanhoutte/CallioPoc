@@ -51,3 +51,17 @@ func TestNaturalCallEndInstructions(t *testing.T) {
 		t.Fatal("end tool must require a reason")
 	}
 }
+
+func TestReceptionistDoesNotPrematurelyConfirmActions(t *testing.T) {
+	for _, required := range []string{
+		"tu ne vends, n'achètes et n'acceptes rien",
+		"demande d'abord ce que l'appelant attend précisément",
+		"ne dis jamais « c'est noté »",
+		"tant que request_handoff n'a pas confirmé",
+		"respecte ce choix même si son nom ou son motif restent inconnus",
+	} {
+		if !strings.Contains(frenchInstructions, required) {
+			t.Fatalf("receptionist prompt missing %q", required)
+		}
+	}
+}
