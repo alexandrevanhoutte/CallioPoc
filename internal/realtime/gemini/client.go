@@ -96,7 +96,7 @@ func liveConfig() *genai.LiveConnectConfig {
 		ResponseModalities: []genai.Modality{genai.ModalityAudio},
 		InputAudioTranscription:  &genai.AudioTranscriptionConfig{},
 		OutputAudioTranscription: &genai.AudioTranscriptionConfig{},
-		Tools: []*genai.Tool{handoffTool(), endCallTool()},
+		Tools: geminiTools(),
 		SystemInstruction: &genai.Content{
 			Parts: []*genai.Part{{Text: frenchInstructions}},
 		},
