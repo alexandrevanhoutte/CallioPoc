@@ -13,6 +13,7 @@ import (
 const (
 	defaultPort  = "8080"
 	defaultModel = "gemini-3.8-live"
+	defaultSummaryModel = "gemini-3.5-flash-lite"
 )
 
 type Config struct {
@@ -20,6 +21,7 @@ type Config struct {
 	AIProvider   string
 	GeminiAPIKey string
 	GeminiModel  string
+	SummaryModel string
 	GreetingLocale realtime.Locale
 }
 
@@ -57,9 +59,13 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, fmt.Errorf("invalid CALL_GREETING_LOCALE: %w", err)
 	}
+	summaryModel := os.Getenv("GEMINI_SUMMARY_MODEL")
+	if summaryModel == "" {
+		summaryModel = defaultSummaryModel
+	}
 	return Config{
 		Port: port, AIProvider: provider,
 		GeminiAPIKey: os.Getenv("GEMINI_API_KEY"),
-		GeminiModel: model, GreetingLocale: locale,
+		GeminiModel: model, SummaryModel: summaryModel, GreetingLocale: locale,
 	}, nil
 }

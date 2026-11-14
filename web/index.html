@@ -20,7 +20,7 @@
         <h2>Audio conversation</h2>
         <label for="stream-mode">Mode</label>
         <select id="stream-mode">
-          <option value="live">Gemini Live (French conversation)</option>
+          <option value="live">Gemini Live (multilingual conversation)</option>
           <option value="echo">Echo (test without API key)</option>
         </select>
         <p id="mic-status" role="status">Inactive</p>
@@ -46,6 +46,19 @@
           <button id="call-no-answer" type="button">Simulate no answer</button>
         </div>
         <p id="call-feedback" role="status"></p>
+        <section id="call-summary" class="summary-panel" hidden aria-labelledby="summary-heading">
+          <h3 id="summary-heading">Call Summary</h3>
+          <p id="summary-status" role="status">Waiting for call completion…</p>
+          <div id="summary-details" hidden>
+            <p><strong>Caller:</strong> <span id="summary-caller"></span></p>
+            <p><strong>Reason:</strong> <span id="summary-reason"></span></p>
+            <p><strong>Urgency:</strong> <span id="summary-urgency"></span></p>
+            <p><strong>Handoff requested:</strong> <span id="summary-handoff"></span></p>
+            <p id="summary-text"></p>
+            <h4>Follow-up actions</h4>
+            <ul id="summary-actions"></ul>
+          </div>
+        </section>
         <p class="note">Transcription is automatic; some speech may be missing or inaccurate. No transcript is saved to disk.</p>
       </section>
       <section>

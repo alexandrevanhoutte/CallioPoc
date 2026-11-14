@@ -15,7 +15,7 @@ func TestRouter(t *testing.T) {
 	t.Parallel()
 
 	files := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<h1>CallioPoc</h1>")}}
-	router := httpapi.NewRouter(context.Background(), files, nil)
+	router := httpapi.NewRouter(context.Background(), files, nil, nil)
 
 	for _, tc := range []struct {
 		name   string

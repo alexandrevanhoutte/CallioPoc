@@ -96,3 +96,10 @@ progress {
 }
 .handoff-controls button { margin: 0.2rem 0.3rem 0.2rem 0; }
 .handoff-controls[hidden] { display: none; }
+
+.summary-panel { margin: 1.25rem 0 0; padding: 1rem; border: 1px solid #e1e4e8; border-radius: 0.7rem; background: #f9fafb; }
+.summary-panel[hidden], #summary-details[hidden] { display: none; }
+.summary-panel h3 { margin: 0 0 0.65rem; }
+.summary-panel h4 { margin-bottom: 0.3rem; }
+.summary-panel p { overflow-wrap: anywhere; }
+#summary-text { line-height: 1.5; }
