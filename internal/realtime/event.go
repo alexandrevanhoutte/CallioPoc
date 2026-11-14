@@ -75,3 +75,9 @@ type VoiceSession interface {
 	Receive(ctx context.Context) (Event, error)
 	Close() error
 }
+
+// HandoffOutcomeNotifier is optional: providers supporting conversational
+// continuation after a declined simulated handoff can implement it.
+type HandoffOutcomeNotifier interface {
+	NotifyHandoffOutcome(ctx context.Context, outcome string) error
+}

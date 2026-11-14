@@ -293,3 +293,109 @@ func TestLiveHandoffEvent(t *testing.T) {
 		t.Fatalf("unexpected handoff event: %+v", event)
 	}
 }
+
+func TestLiveLifecycleControl(t *testing.T) {
+	for _, tc := range []struct {
+		action string
+		want string
+	}{
+		{"accept", "human_active"},
+		{"decline", "ai_active"},
+		{"no_answer", "ai_active"},
+	} {
+		t.Run(tc.action, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			provider := &fakeVoiceProvider{}
+			server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+			defer server.Close()
+			conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+			if err != nil { t.Fatal(err) }
+			defer conn.CloseNow()
+
+			// A frame both initializes the provider and confirms the bridge is ready.
+			if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 640)); err != nil { t.Fatal(err) }
+			if kind, _, err := conn.Read(ctx); err != nil || kind != websocket.MessageBinary {
+				t.Fatalf("expected initial echo, kind=%v err=%v", kind, err)
+			}
+			provider.mu.Lock()
+			s := provider.session
+			provider.mu.Unlock()
+			if s == nil { t.Fatal("missing provider session") }
+			s.events <- realtime.Event{Type: realtime.EventHandoffRequired, Handoff: &realtime.HandoffRequest{
+				Reason: realtime.HandoffOwnerRequested,
+				Context: realtime.HandoffContext{Purpose: "Recruitment", Summary: "Caller wishes to discuss a job."},
+			}}
+			for _, want := range []string{"handoff_required", "call_state"} {
+				kind, body, err := conn.Read(ctx)
+				if err != nil { t.Fatal(err) }
+				if kind != websocket.MessageText { t.Fatalf("expected text, got %v", kind) }
+				var event struct { Type string `json:"type"`; State string `json:"state"` }
+				if err := json.Unmarshal(body, &event); err != nil { t.Fatal(err) }
+				if event.Type != want { t.Fatalf("got %s, want %s", event.Type, want) }
+				if want == "call_state" && event.State != "handoff_required" { t.Fatalf("unexpected state: %s", event.State) }
+			}
+
+			if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"`+tc.action+`"}`)); err != nil { t.Fatal(err) }
+			kind, body, err := conn.Read(ctx)
+			if err != nil { t.Fatal(err) }
+			var response struct {
+				Type string `json:"type"`
+				State string `json:"state"`
+				Outcome string `json:"outcome"`
+			}
+			if kind != websocket.MessageText { t.Fatalf("expected state text, got %v", kind) }
+			if err := json.Unmarshal(body, &response); err != nil { t.Fatal(err) }
+			if response.Type != "call_state" || response.State != tc.want || response.Outcome != tc.action && !(tc.action == "accept" && response.Outcome == "accepted") {
+				t.Fatalf("unexpected response: %+v", response)
+			}
+
+			if tc.action == "accept" {
+				select {
+				case <-s.closed:
+				case <-time.After(time.Second): t.Fatal("Gemini session not closed after takeover")
+				}
+			} else {
+				select {
+				case <-s.closed: t.Fatal("Gemini session closed after declined handoff")
+				default:
+				}
+			}
+			if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"end_call"}`)); err != nil { t.Fatal(err) }
+			kind, body, err = conn.Read(ctx)
+			if err != nil { t.Fatal(err) }
+			if kind != websocket.MessageText || !bytes.Contains(body, []byte(`"state":"completed"`)) {
+				t.Fatalf("expected completion, got kind=%v payload=%s", kind, body)
+			}
+			select {
+			case <-s.closed:
+			case <-time.After(time.Second): t.Fatal("session did not close after end_call")
+			}
+		})
+	}
+}
+
+func TestInvalidLifecycleCommandDoesNotChangeState(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := &fakeVoiceProvider{}
+	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	defer server.Close()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+	if err != nil { t.Fatal(err) }
+	defer conn.CloseNow()
+
+	for _, action := range []string{"accept", "decline", "no_answer", "invalid"} {
+		if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"`+action+`"}`)); err != nil { t.Fatal(err) }
+		kind, body, err := conn.Read(ctx)
+		if err != nil { t.Fatal(err) }
+		if kind != websocket.MessageText || !bytes.Contains(body, []byte(`"type":"call_error"`)) {
+			t.Fatalf("expected validation error for %s, got %s", action, body)
+		}
+	}
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"end_call"}`)); err != nil { t.Fatal(err) }
+	_, body, err := conn.Read(ctx)
+	if err != nil || !bytes.Contains(body, []byte(`"state":"completed"`)) {
+		t.Fatalf("expected completion after errors, payload=%s err=%v", body, err)
+	}
+}

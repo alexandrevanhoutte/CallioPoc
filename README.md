@@ -117,3 +117,19 @@ A manual microphone/AI call is essential. Gemini access, quotas and billing depe
 - `internal/realtime/gemini/` — Gemini Live SDK adapter.
 - `web/` — browser microphone, WebSocket client, audio playback.
 - `tests/` — frontend audio tests.
+
+## CI-08: simulated human takeover
+
+The local browser POC supports a simulated handoff without a phone operator.
+
+1. Start a Gemini Live conversation and ask to speak to the owner.
+2. When `handoff_required` arrives, the **Conversation** area shows **Accept**, **Decline**, and **Simulate no answer**.
+3. **Accept** moves to `human_active`, closes Gemini, stops browser microphone/playback and leaves the WebSocket open so you can click **End call**. No human-to-human audio path exists yet.
+4. **Decline** and **Simulate no answer** return to `ai_active` and prompt Gemini to offer to take a message.
+5. **End call** moves to `completed`, acknowledges the state and releases the streams.
+
+Control messages are JSON text frames (`accept`, `decline`, `no_answer`, `end_call`) on `/ws/live`, alongside the existing PCM16 binary frames. The server responds with `call_state` or `call_error` events. The backend owns valid transitions; the UI only changes state after a server acknowledgement.
+
+`internal/call.HandoffProvider` is an interchangeable interface; `MockHandoff` is the only implementation for this POC. **No real transfer or telephony availability check is performed.** The no-answer button is a manual simulation, not an automatic timeout. The existing CI-07 detector allows one handoff event per Gemini session; repeated handoffs after declining are not yet supported.
+
+Run `go test ./...` and `node --test tests/*.test.mjs` to verify the lifecycle and WebSocket behavior without an API key.

@@ -212,3 +212,27 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 	}
 	return nil
 }
+
+func (s *session) NotifyHandoffOutcome(ctx context.Context, outcome string) error {
+	if err := ctx.Err(); err != nil { return err }
+	var instruction string
+	switch outcome {
+	case "decline":
+		instruction = "Information interne : le propriétaire a refusé la prise en main simulée. "
+	case "no_answer":
+		instruction = "Information interne : le propriétaire ne répond pas à la demande de prise en main simulée. "
+	default:
+		return fmt.Errorf("unsupported handoff outcome: %q", outcome)
+	}
+	instruction += "Explique brièvement à l'appelant que le propriétaire n'est pas disponible et propose de prendre un message. " +
+		"Ne laisse pas croire que l'appel a été réellement transféré."
+	if err := s.live.SendClientContent(genai.LiveClientContentInput{
+		Turns: []*genai.Content{{
+			Role: "user",
+			Parts: []*genai.Part{{Text: instruction}},
+		}},
+	}); err != nil {
+		return fmt.Errorf("notify Gemini of handoff outcome: %w", err)
+	}
+	return nil
+}

@@ -82,3 +82,26 @@ test("invalid echoed data triggers error callback", async () => {
   assert.match(message, /Unexpected .*audio data/);
   connection.close();
 });
+
+test("live WebSocket sends only allowed lifecycle commands", async () => {
+  const connection = new AudioSocket({
+    endpoint: "/ws/live",
+    onChunk() {},
+    onDisconnect() {},
+  });
+  const connected = connection.connect();
+  const ws = FakeWebSocket.instances.at(-1);
+  ws.open();
+  await connected;
+  for (const type of ["accept", "decline", "no_answer", "end_call"]) {
+    assert.equal(connection.sendControl(type), true);
+    assert.deepEqual(JSON.parse(ws.sent.at(-1)), { type });
+  }
+  const count = ws.sent.length;
+  assert.equal(connection.sendControl("invalid"), false);
+  assert.equal(ws.sent.length, count);
+  connection.close();
+  assert.equal(connection.sendControl("end_call"), false);
+  const echo = new AudioSocket({ onChunk() {}, onDisconnect() {} });
+  assert.equal(echo.sendControl("accept"), false);
+});
