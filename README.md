@@ -179,3 +179,28 @@ The server sends `call_state: completed` followed by either `call_summary` or `s
 This text request uses the same server-side `GEMINI_API_KEY` but a separate model and may incur additional API usage. The live model name should not be used for text-only `GEMINI_SUMMARY_MODEL`. No call data is stored on disk. Transcripts sent to the configured text model may contain personal data; review consent and retention requirements before deploying outside this local POC.
 
 Testing: `go test ./...`, `go test -race ./...`, and a manual call with French/English/Korean speech. Verify summary content, handoff state, manual and automatic hangup, the “Generating summary…” UI state, and that an unavailable text model displays “Summary unavailable” without trapping the call.
+
+
+## CI-14 — Microphone silence filtering
+
+In Gemini Live mode, a small browser-side `VoiceActivityGate` uses RMS
+hysteresis, a 200 ms pre-roll and 700 ms trailing silence before sending
+PCM16 over WebSocket. The browser still monitors microphone frames locally
+during idle silence, but it does not upload continuous silent audio.
+After each burst it sends `{"type":"audio_stream_end"}`; the Go bridge
+forwards this to Gemini using `EndAudioStream` without closing the session.
+The next speech burst reopens the audio stream automatically.
+
+The Advanced panel separates microphone frames **processed**, **uploaded**,
+**filtered** and **dropped** because of WebSocket backpressure. Some processed
+frames may still be held in the bounded pre-roll buffer; these counters do
+not necessarily sum at every instant. Echo mode bypasses the gate.
+
+This RMS-only gate is a baseline: soft speech and noisy environments may
+require threshold tuning. Manually check quiet speech, pauses, barge-in,
+transcript completion, simulated handoff, auto-hangup and Stop/restart
+against Gemini before merging. Lower WebSocket traffic is expected but
+reduced Gemini billing is not guaranteed.
+
+Run `node --test tests/*.test.cjs tests/*.test.mjs`, `go test ./...`,
+`go test -race ./...`, and `go vet ./...`.

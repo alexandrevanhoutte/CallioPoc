@@ -53,6 +53,7 @@ type liveSession struct {
 	farewell     *time.Timer
 	lastActivity time.Time
 	aiSpeaking   bool
+	streamOpen   bool // readBrowser only; suppress duplicate stream-end signals.
 }
 
 // The live protocol uploads 16 kHz mono PCM16 (640 bytes) and receives
@@ -185,6 +186,7 @@ func (s *liveSession) readBrowser(ctx context.Context) error {
 				}
 				return err
 			}
+			s.streamOpen = true
 			continue
 		}
 		if kind != websocket.MessageText || len(data) > maxLiveMessageBytes {
@@ -199,6 +201,22 @@ func (s *liveSession) readBrowser(ctx context.Context) error {
 
 		var actionErr error
 		switch message.Type {
+		case "audio_stream_end":
+			s.mu.Lock()
+			finishing := s.phase == endAwaitingPlayback
+			s.mu.Unlock()
+			state := s.lifecycle.State()
+			if finishing || (state != call.AIActive && state != call.HandoffRequired) {
+				actionErr = errors.New("audio stream end is not allowed in this call state")
+				break
+			}
+			if s.streamOpen {
+				if err := s.voice.EndAudioStream(ctx); err != nil {
+					return fmt.Errorf("end provider audio stream: %w", err)
+				}
+				s.streamOpen = false
+				s.touch() // Real speech ended; silent PCM frames never reset inactivity.
+			}
 		case "playback_finished":
 			s.mu.Lock()
 			ready := s.phase == endAwaitingPlayback

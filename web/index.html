@@ -124,7 +124,7 @@
           <div class="advanced-body">
             <div class="advanced-status"><p>WebSocket <strong id="ws-status" role="status">Disconnected</strong></p><p>Input format <strong>PCM16 · 16 kHz · mono · 20 ms</strong></p></div>
             <div class="counters">
-              <p>Produced <output id="mic-chunks">0</output></p><p>Sent <output id="ws-sent">0</output></p><p>Received <output id="ws-received">0</output></p><p>Dropped upload <output id="ws-dropped">0</output></p><p>Scheduled playback <output id="playback-scheduled">0</output></p><p>Dropped playback <output id="playback-dropped">0</output></p><p>Silent AI chunks <output id="ai-silent-chunks">0</output></p><p>AI interruptions <output id="ai-interruptions">0</output></p>
+              <p>Processed mic <output id="mic-chunks">0</output></p><p>Uploaded <output id="ws-sent">0</output></p><p>Filtered silence <output id="ws-filtered">0</output></p><p>Received <output id="ws-received">0</output></p><p>Dropped upload <output id="ws-dropped">0</output></p><p>Scheduled playback <output id="playback-scheduled">0</output></p><p>Dropped playback <output id="playback-dropped">0</output></p><p>Silent AI chunks <output id="ai-silent-chunks">0</output></p><p>AI interruptions <output id="ai-interruptions">0</output></p>
             </div>
             <label class="echo-option"><input id="echo-playback" type="checkbox" disabled /> Play echoed audio (headphones recommended)</label>
             <p class="helper">Gemini replies play automatically. Packet inspection and manual test messages will be added later.</p>

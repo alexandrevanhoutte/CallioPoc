@@ -26,6 +26,7 @@ type fakeVoiceProvider struct {
 func (p *fakeVoiceProvider) Open(_ context.Context) (realtime.VoiceSession, error) {
 	s := &fakeVoiceSession{
 		events: make(chan realtime.Event, 8),
+		streamEnds: make(chan struct{}, 8),
 		closed: make(chan struct{}),
 	}
 	p.mu.Lock()
@@ -36,6 +37,7 @@ func (p *fakeVoiceProvider) Open(_ context.Context) (realtime.VoiceSession, erro
 
 type fakeVoiceSession struct {
 	events chan realtime.Event
+	streamEnds chan struct{}
 	closed chan struct{}
 	once sync.Once
 }
@@ -48,6 +50,17 @@ func (s *fakeVoiceSession) SendAudio(ctx context.Context, audio []byte) error {
 	copy(out.Audio, audio)
 	select {
 	case s.events <- out:
+		return nil
+	case <-s.closed:
+		return context.Canceled
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *fakeVoiceSession) EndAudioStream(ctx context.Context) error {
+	select {
+	case s.streamEnds <- struct{}{}:
 		return nil
 	case <-s.closed:
 		return context.Canceled
