@@ -1,0 +1,36 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #1b2430;
+  background: #f7f8fa;
+}
+
+body {
+  margin: 0;
+  padding: 3rem 1rem;
+}
+
+main {
+  max-width: 36rem;
+  margin: 0 auto;
+}
+
+section {
+  margin: 2rem 0;
+  padding: 1.5rem;
+  background: white;
+  border: 1px solid #e1e4e8;
+  border-radius: 0.75rem;
+}
+
+button {
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: wait;
+}
+
+.note {
+  color: #596579;
+}
