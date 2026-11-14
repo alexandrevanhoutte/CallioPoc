@@ -56,6 +56,8 @@ func audioLive(appCtx context.Context, provider realtime.VoiceProvider) http.Han
 			session: session,
 			lifecycle: call.NewLifecycle(call.MockHandoff{}),
 		}
+		bridge.touch()
+		go bridge.watchInactivity(ctx, configuredIdleTimeout())
 		type streamResult struct {
 			source string
 			err error
@@ -100,6 +102,7 @@ func forwardModel(ctx context.Context, bridge *liveBridge) error {
 		}
 		switch event.Type {
 		case realtime.EventAudio:
+			bridge.aiSpeaking.Store(true)
 			// A provider may deliver buffered audio after announcing cancellation.
 			// Never forward explicitly stale generations to the browser.
 			if event.TurnID != 0 && event.TurnID <= interruptedTurn {
@@ -116,6 +119,7 @@ func forwardModel(ctx context.Context, bridge *liveBridge) error {
 				return err
 			}
 		case realtime.EventTranscript:
+			bridge.touch()
 			if event.Transcript == nil {
 				continue
 			}
@@ -132,6 +136,8 @@ func forwardModel(ctx context.Context, bridge *liveBridge) error {
 			if err := bridge.writeText(ctx, body); err != nil {
 				return err
 			}
+		case realtime.EventCallEndRequested:
+			bridge.beginFinishing(ctx, "caller_finished")
 		case realtime.EventHandoffRequired:
 			if event.Handoff == nil {
 				return errors.New("missing handoff request")
@@ -161,11 +167,14 @@ func forwardModel(ctx context.Context, bridge *liveBridge) error {
 			if err := bridge.sendState(ctx, "requested"); err != nil { return err }
 		case realtime.EventTurnEnd, realtime.EventInterrupted:
 			if event.Type == realtime.EventInterrupted {
+				bridge.aiSpeaking.Store(false)
 				if event.TurnID > interruptedTurn {
 					interruptedTurn = event.TurnID
 				}
 				slog.Info("assistant turn interrupted", "turn_id", event.TurnID)
 			} else if event.Type == realtime.EventTurnEnd {
+				bridge.aiSpeaking.Store(false)
+				bridge.touch()
 				if event.TurnID != 0 && event.TurnID <= interruptedTurn {
 					continue
 				}
@@ -180,6 +189,9 @@ func forwardModel(ctx context.Context, bridge *liveBridge) error {
 			}
 			if err := bridge.writeText(ctx, body); err != nil {
 				return err
+			}
+			if event.Type == realtime.EventTurnEnd && bridge.finishing.Load() {
+				if err := bridge.sendFinishing(ctx); err != nil { return err }
 			}
 		default:
 			return errors.New("unexpected provider event type")
