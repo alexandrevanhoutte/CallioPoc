@@ -31,13 +31,21 @@
         <p>Audio chunks produced: <output id="mic-chunks">0</output></p>
         <div class="mic-controls">
           <button id="mic-start" type="button">Start conversation</button>
-          <button id="mic-stop" type="button" disabled>Stop</button>
+          <button id="mic-stop" type="button" disabled>End call</button>
         </div>
       </section>
       <section>
         <h2>Conversation</h2>
         <p id="transcript-status" role="status">Waiting for conversation…</p>
+        <p>Call state: <strong id="call-state" role="status">Inactive</strong></p>
         <div id="transcript-list" class="transcript-list" role="log" aria-live="polite" aria-relevant="additions text"></div>
+        <div id="handoff-controls" class="handoff-controls" hidden>
+          <p>Simulated human takeover — no real telephone transfer.</p>
+          <button id="call-accept" type="button">Accept</button>
+          <button id="call-decline" type="button">Decline</button>
+          <button id="call-no-answer" type="button">Simulate no answer</button>
+        </div>
+        <p id="call-feedback" role="status"></p>
         <p class="note">Transcription is automatic; some speech may be missing or inaccurate. No transcript is saved to disk.</p>
       </section>
       <section>
