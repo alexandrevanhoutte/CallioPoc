@@ -130,6 +130,27 @@ func forwardModel(ctx context.Context, conn *websocket.Conn, session realtime.Vo
 			if err := conn.Write(ctx, websocket.MessageText, body); err != nil {
 				return err
 			}
+		case realtime.EventHandoffRequired:
+			if event.Handoff == nil {
+				return errors.New("missing handoff request")
+			}
+			if err := event.Handoff.Validate(); err != nil {
+				return err
+			}
+			body, err := json.Marshal(struct {
+				Type    string                  `json:"type"`
+				Reason  string                  `json:"reason"`
+				Context realtime.HandoffContext `json:"context"`
+			}{
+				Type: event.Type.String(), Reason: event.Handoff.Reason.String(),
+				Context: event.Handoff.Context,
+			})
+			if err != nil {
+				return err
+			}
+			if err := conn.Write(ctx, websocket.MessageText, body); err != nil {
+				return err
+			}
 		case realtime.EventTurnEnd, realtime.EventInterrupted:
 			if event.Type == realtime.EventInterrupted {
 				if event.TurnID > interruptedTurn {
