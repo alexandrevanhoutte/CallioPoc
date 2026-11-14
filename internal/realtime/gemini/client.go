@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
@@ -79,6 +80,7 @@ func liveConfig() *genai.LiveConnectConfig {
 		ResponseModalities: []genai.Modality{genai.ModalityAudio},
 		InputAudioTranscription:  &genai.AudioTranscriptionConfig{},
 		OutputAudioTranscription: &genai.AudioTranscriptionConfig{},
+		Tools: []*genai.Tool{handoffTool()},
 		SystemInstruction: &genai.Content{
 			Parts: []*genai.Part{{Text: frenchInstructions}},
 		},
@@ -98,6 +100,7 @@ type session struct {
 
 	// Only Receive accesses this; the send goroutine never touches it.
 	turns turnState
+	handoff realtime.OnceHandoffDetector
 }
 
 func (s *session) SendAudio(ctx context.Context, pcm16 []byte) error {
@@ -126,7 +129,15 @@ func (s *session) Receive(ctx context.Context) (realtime.Event, error) {
 		if err != nil {
 			return realtime.Event{}, err
 		}
-		if message == nil || message.ServerContent == nil {
+		if message == nil {
+			continue
+		}
+		if message.ToolCall != nil {
+			if err := s.handleToolCalls(message.ToolCall); err != nil {
+				return realtime.Event{}, err
+			}
+		}
+		if message.ServerContent == nil {
 			continue
 		}
 		if err := s.turns.process(message.ServerContent); err != nil {
@@ -143,4 +154,42 @@ func (s *session) Close() error {
 		s.closeErr = s.live.Close()
 	})
 	return s.closeErr
+}
+
+// handleToolCalls acknowledges every Gemini tool call, including invalid requests.
+// It only emits a validated handoff once per session.
+func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
+	responses := make([]*genai.FunctionResponse, 0, len(toolCall.FunctionCalls))
+	for _, call := range toolCall.FunctionCalls {
+		if call == nil {
+			continue
+		}
+		response := &genai.FunctionResponse{ID: call.ID, Name: call.Name}
+		if call.Name != handoffToolName {
+			response.Response = map[string]any{"error": "unsupported tool"}
+		} else {
+			request, err := parseHandoff(call.Args)
+			if err != nil {
+				slog.Warn("Gemini handoff arguments rejected", "error", err)
+				response.Response = map[string]any{"error": "invalid handoff arguments"}
+			} else {
+				emit, err := s.handoff.Detect(request)
+				if err != nil {
+					return err
+				}
+				if emit {
+					s.turns.pending = append(s.turns.pending, realtime.Event{Type: realtime.EventHandoffRequired, Handoff: &request})
+				}
+				response.Response = map[string]any{"output": "handoff request recorded; no transfer performed"}
+			}
+		}
+		responses = append(responses, response)
+	}
+	if len(responses) == 0 {
+		return nil
+	}
+	if err := s.live.SendToolResponse(genai.LiveToolResponseInput{FunctionResponses: responses}); err != nil {
+		return fmt.Errorf("send Gemini tool responses: %w", err)
+	}
+	return nil
 }
