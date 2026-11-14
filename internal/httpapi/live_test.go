@@ -1,9 +1,9 @@
-package httpapi_test
+package httpapi
 
 import (
-	"encoding/json"
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,7 +12,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/alexandrevanhoutte/CallioPoc/internal/httpapi"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/call"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
 	"github.com/coder/websocket"
 )
@@ -75,7 +75,7 @@ func TestLiveBridge(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
 	defer server.Close()
 
 	uri := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/live"
@@ -118,7 +118,7 @@ func TestInterruptedTurnDoesNotForwardStaleAudio(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
 	defer server.Close()
 
 	uri := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/live"
@@ -173,7 +173,7 @@ func TestLiveTranscriptEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
 	defer server.Close()
 
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
@@ -223,7 +223,7 @@ func TestLiveTranscriptEvent(t *testing.T) {
 }
 
 func TestLiveWithoutProvider(t *testing.T) {
-	server := httptest.NewServer(httpapi.NewRouter(context.Background(), fstest.MapFS{}, nil))
+	server := httptest.NewServer(NewRouter(context.Background(), fstest.MapFS{}, nil))
 	defer server.Close()
 	response, err := http.Get(server.URL + "/ws/live")
 	if err != nil {
@@ -239,7 +239,7 @@ func TestLiveHandoffEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
 	defer server.Close()
 
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
@@ -307,7 +307,7 @@ func TestLiveLifecycleControl(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			provider := &fakeVoiceProvider{}
-			server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+			server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
 			defer server.Close()
 			conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
 			if err != nil { t.Fatal(err) }
@@ -379,7 +379,7 @@ func TestInvalidLifecycleCommandDoesNotChangeState(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
 	defer server.Close()
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
 	if err != nil { t.Fatal(err) }
@@ -404,7 +404,7 @@ func TestLiveNaturalCompletionWaitsForPlayback(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
 	defer server.Close()
 
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
@@ -458,7 +458,7 @@ func TestPlaybackAcknowledgementRequiresFinishing(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
 	defer server.Close()
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
 	if err != nil { t.Fatal(err) }
@@ -474,4 +474,35 @@ func TestPlaybackAcknowledgementRequiresFinishing(t *testing.T) {
 	if err != nil || !bytes.Contains(payload, []byte(`"state":"completed"`)) {
 		t.Fatalf("manual completion failed: %s (%v)", payload, err)
 	}
+}
+
+func TestIdleExpired(t *testing.T) {
+	now := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct{
+		name string
+		last time.Time
+		state call.State
+		speaking bool
+		want bool
+	}{
+		{"silent for 61 seconds", now.Add(-61*time.Second), call.AIActive, false, true},
+		{"recent speech", now.Add(-20*time.Second), call.AIActive, false, false},
+		{"AI still speaking", now.Add(-70*time.Second), call.AIActive, true, false},
+		{"handoff pending", now.Add(-70*time.Second), call.HandoffRequired, false, false},
+		{"human active", now.Add(-70*time.Second), call.HumanActive, false, false},
+		{"completed", now.Add(-70*time.Second), call.Completed, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := idleExpired(now, tc.last, time.Minute, tc.state, tc.speaking); got != tc.want {
+				t.Fatalf("idleExpired()=%t want %t", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestConfiguredIdleTimeout(t *testing.T) {
+	t.Setenv("CALL_IDLE_TIMEOUT_SECONDS", "90")
+	if got := configuredIdleTimeout(); got != 90*time.Second { t.Fatalf("got %s", got) }
+	t.Setenv("CALL_IDLE_TIMEOUT_SECONDS", "1")
+	if got := configuredIdleTimeout(); got != defaultIdleTimeout { t.Fatalf("invalid timeout got %s", got) }
 }
