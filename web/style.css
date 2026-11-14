@@ -466,6 +466,8 @@ progress::-moz-progress-bar {
   min-height: 1.2em;
 }
 .call-actions {
+  display: grid;
+  gap: 12px;
   margin-top: 22px;
 }
 .primary-button, .danger-button {
