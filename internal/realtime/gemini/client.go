@@ -32,7 +32,10 @@ const (
 		"request_handoff avec le motif et un résumé fidèle, AVANT d'annoncer que la demande est notée. " +
 		"Une annonce orale ne remplace jamais l'appel de l'outil. " +
 		"Après confirmation par l'outil, indique seulement que la demande a été enregistrée ; " +
-		"ne prétends pas avoir transféré l'appel ni connaître la disponibilité du propriétaire."
+		"ne prétends pas avoir transféré l'appel ni connaître la disponibilité du propriétaire. " +
+		"Quand l'appelant indique clairement que tout est terminé ou dit au revoir, réponds une seule fois brièvement, " +
+		"puis appelle obligatoirement request_call_end. Ne continue pas les échanges de politesses. " +
+		"Ne termine jamais l'appel s'il reste une question ouverte ou une demande de transfert en attente."
 
 	openingPrompt = "Un nouvel appel entrant vient d'être décroché. " +
 		"Accueille immédiatement l'appelant à voix haute, en une seule phrase, " +
@@ -93,7 +96,7 @@ func liveConfig() *genai.LiveConnectConfig {
 		ResponseModalities: []genai.Modality{genai.ModalityAudio},
 		InputAudioTranscription:  &genai.AudioTranscriptionConfig{},
 		OutputAudioTranscription: &genai.AudioTranscriptionConfig{},
-		Tools: []*genai.Tool{handoffTool()},
+		Tools: []*genai.Tool{handoffTool(), endCallTool()},
 		SystemInstruction: &genai.Content{
 			Parts: []*genai.Part{{Text: frenchInstructions}},
 		},
@@ -114,6 +117,7 @@ type session struct {
 	// Only Receive accesses this; the send goroutine never touches it.
 	turns turnState
 	handoff realtime.OnceHandoffDetector
+	endRequested bool
 }
 
 func (s *session) SendAudio(ctx context.Context, pcm16 []byte) error {
@@ -180,27 +184,36 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 		}
 		slog.Info("Gemini function requested", "name", call.Name, "call_id", call.ID)
 		response := &genai.FunctionResponse{ID: call.ID, Name: call.Name}
-		if call.Name != handoffToolName {
-			response.Response = map[string]any{"error": "unsupported tool"}
-		} else {
+		switch call.Name {
+		case endCallToolName:
+			if call.Args["reason"] != "conversation_finished" {
+				response.Response = map[string]any{"error": "invalid call end reason"}
+			} else {
+				if !s.endRequested {
+					s.endRequested = true
+					s.turns.pending = append(s.turns.pending, realtime.Event{Type: realtime.EventCallEndRequested})
+					slog.Info("Gemini natural call completion requested", "call_id", call.ID)
+				}
+				response.Response = map[string]any{"output": "call completion requested; final audio playback must finish"}
+			}
+		case handoffToolName:
 			request, err := parseHandoff(call.Args)
 			if err != nil {
 				slog.Warn("Gemini handoff arguments rejected", "error", err)
 				response.Response = map[string]any{"error": "invalid handoff arguments"}
 			} else {
 				emit, err := s.handoff.Detect(request)
-				if err != nil {
-					return err
-				}
+				if err != nil { return err }
 				if emit {
 					slog.Info("handoff accepted", "reason", request.Reason.String(), "call_id", call.ID)
 					s.turns.pending = append(s.turns.pending, realtime.Event{Type: realtime.EventHandoffRequired, Handoff: &request})
-				}
-				if !emit {
+				} else {
 					slog.Info("duplicate handoff ignored", "call_id", call.ID)
 				}
 				response.Response = map[string]any{"output": "handoff request recorded; no transfer performed"}
 			}
+		default:
+			response.Response = map[string]any{"error": "unsupported tool"}
 		}
 		responses = append(responses, response)
 	}
