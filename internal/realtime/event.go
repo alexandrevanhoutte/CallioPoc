@@ -15,6 +15,7 @@ const (
 	EventTurnEnd
 	EventInterrupted
 	EventHandoffRequired
+	EventCallEndRequested
 )
 
 func NewEventType(value string) (EventType, error) {
@@ -29,6 +30,8 @@ func NewEventType(value string) (EventType, error) {
 		return EventInterrupted, nil
 	case "handoff_required":
 		return EventHandoffRequired, nil
+	case "call_end_requested":
+		return EventCallEndRequested, nil
 	default:
 		return 0, fmt.Errorf("invalid event type: %q", value)
 	}
@@ -46,6 +49,8 @@ func (e EventType) String() string {
 		return "interrupted"
 	case EventHandoffRequired:
 		return "handoff_required"
+	case EventCallEndRequested:
+		return "call_end_requested"
 	default:
 		return "unknown"
 	}

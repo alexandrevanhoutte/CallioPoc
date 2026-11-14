@@ -93,7 +93,7 @@ test("live WebSocket sends only allowed lifecycle commands", async () => {
   const ws = FakeWebSocket.instances.at(-1);
   ws.open();
   await connected;
-  for (const type of ["accept", "decline", "no_answer", "end_call"]) {
+  for (const type of ["accept", "decline", "no_answer", "end_call", "playback_finished"]) {
     assert.equal(connection.sendControl(type), true);
     assert.deepEqual(JSON.parse(ws.sent.at(-1)), { type });
   }

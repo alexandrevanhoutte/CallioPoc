@@ -19,6 +19,11 @@ const (
 		"Chaque intervention doit contenir une ou deux phrases courtes, idéalement 20 mots au total. " +
 		"Pose au maximum une question à la fois. Pas de listes, de longs préambules ni d'explications non demandées. " +
 		"Après l'accueil, écoute l'appelant et cherche simplement à comprendre l'objet de l'appel. " +
+		"Tu es le standard téléphonique du correspondant : tu ne vends, n'achètes et n'acceptes rien en son nom. " +
+		"Si la demande est vague ou sans lien clair avec lui (par exemple « je souhaite vendre des chaussures »), " +
+		"demande d'abord ce que l'appelant attend précisément du correspondant, avant de recueillir son nom. " +
+		"Reformule sans promettre d'action : ne dis jamais « c'est noté », « demande enregistrée » " +
+		"ou « je transmets » tant que request_handoff n'a pas confirmé la demande. " +
 		"Ne prétends pas être humain et n'invente jamais de transfert, de rendez-vous ou d'action effectuée. " +
 		"Si l'appelant souhaite parler au propriétaire, ou si tu ne peux pas traiter une demande importante, " +
 		"ne déclenche pas immédiatement le transfert : recueille d'abord les informations utiles. " +
@@ -32,7 +37,11 @@ const (
 		"request_handoff avec le motif et un résumé fidèle, AVANT d'annoncer que la demande est notée. " +
 		"Une annonce orale ne remplace jamais l'appel de l'outil. " +
 		"Après confirmation par l'outil, indique seulement que la demande a été enregistrée ; " +
-		"ne prétends pas avoir transféré l'appel ni connaître la disponibilité du propriétaire."
+		"ne prétends pas avoir transféré l'appel ni connaître la disponibilité du propriétaire. " +
+		"Si l'appelant souhaite raccrocher, respecte ce choix même si son nom ou son motif restent inconnus. " +
+		"Quand l'appelant indique clairement que tout est terminé ou dit au revoir, réponds une seule fois brièvement, " +
+		"puis appelle obligatoirement request_call_end. Ne continue pas les échanges de politesses. " +
+		"Ne termine jamais l'appel s'il reste une question ouverte ou une demande de transfert en attente."
 
 	openingPrompt = "Un nouvel appel entrant vient d'être décroché. " +
 		"Accueille immédiatement l'appelant à voix haute, en une seule phrase, " +
@@ -93,7 +102,7 @@ func liveConfig() *genai.LiveConnectConfig {
 		ResponseModalities: []genai.Modality{genai.ModalityAudio},
 		InputAudioTranscription:  &genai.AudioTranscriptionConfig{},
 		OutputAudioTranscription: &genai.AudioTranscriptionConfig{},
-		Tools: []*genai.Tool{handoffTool()},
+		Tools: geminiTools(),
 		SystemInstruction: &genai.Content{
 			Parts: []*genai.Part{{Text: frenchInstructions}},
 		},
@@ -180,27 +189,35 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 		}
 		slog.Info("Gemini function requested", "name", call.Name, "call_id", call.ID)
 		response := &genai.FunctionResponse{ID: call.ID, Name: call.Name}
-		if call.Name != handoffToolName {
-			response.Response = map[string]any{"error": "unsupported tool"}
-		} else {
+		switch call.Name {
+		case endCallToolName:
+			if call.Args["reason"] != "conversation_finished" {
+				response.Response = map[string]any{"error": "invalid call end reason"}
+			} else {
+				// Lifecycle handles duplicates; a later request may be valid
+				// if the caller interrupted an earlier farewell.
+				s.turns.pending = append(s.turns.pending, realtime.Event{Type: realtime.EventCallEndRequested})
+				slog.Info("Gemini natural call completion requested", "call_id", call.ID)
+				response.Response = map[string]any{"output": "call completion requested; final audio playback must finish"}
+			}
+		case handoffToolName:
 			request, err := parseHandoff(call.Args)
 			if err != nil {
 				slog.Warn("Gemini handoff arguments rejected", "error", err)
 				response.Response = map[string]any{"error": "invalid handoff arguments"}
 			} else {
 				emit, err := s.handoff.Detect(request)
-				if err != nil {
-					return err
-				}
+				if err != nil { return err }
 				if emit {
 					slog.Info("handoff accepted", "reason", request.Reason.String(), "call_id", call.ID)
 					s.turns.pending = append(s.turns.pending, realtime.Event{Type: realtime.EventHandoffRequired, Handoff: &request})
-				}
-				if !emit {
+				} else {
 					slog.Info("duplicate handoff ignored", "call_id", call.ID)
 				}
 				response.Response = map[string]any{"output": "handoff request recorded; no transfer performed"}
 			}
+		default:
+			response.Response = map[string]any{"error": "unsupported tool"}
 		}
 		responses = append(responses, response)
 	}
