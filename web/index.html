@@ -23,13 +23,23 @@
         <progress id="mic-level" max="100" value="0"></progress>
         <p id="mic-signal" role="status">No active audio input</p>
         <p>PCM16 · 16 kHz · Mono · 20 ms chunks</p>
-        <p>Audio chunks received: <output id="mic-chunks">0</output></p>
+        <p>Audio chunks produced: <output id="mic-chunks">0</output></p>
         <div class="mic-controls">
-          <button id="mic-start" type="button">Start microphone</button>
-          <button id="mic-stop" type="button" disabled>Stop microphone</button>
+          <button id="mic-start" type="button">Start microphone & streaming</button>
+          <button id="mic-stop" type="button" disabled>Stop</button>
         </div>
       </section>
-      <p class="note">Audio is processed locally in the browser. WebSocket transport comes in CI-03.</p>
+      <section>
+        <h2>Audio streaming</h2>
+        <p>WebSocket: <span id="ws-status" role="status">Disconnected</span></p>
+        <div class="counters">
+          <p>Chunks sent: <output id="ws-sent">0</output></p>
+          <p>Chunks received: <output id="ws-received">0</output></p>
+          <p>Chunks dropped: <output id="ws-dropped">0</output></p>
+        </div>
+        <label><input id="echo-playback" type="checkbox" disabled /> Play echoed audio (headphones recommended)</label>
+      </section>
+      <p class="note">The backend only echoes audio. AI conversation comes in CI-04.</p>
     </main>
   </body>
 </html>

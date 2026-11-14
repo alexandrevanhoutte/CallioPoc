@@ -1,43 +1,49 @@
 # CallioPoc
 
-Minimal single-user browser-based AI receptionist proof of concept. The Go HTTP server serves a plain HTML/JS test page with local microphone capture. WebSocket streaming and Gemini Live come in later tickets.
+Local single-user AI receptionist POC. The browser captures PCM16 audio and streams it to Go over WebSocket. For now, Go echoes the exact audio bytes back; a Gemini Live session will replace this in CI-04.
 
 ## Requirements
 
 - Go 1.23 or newer
-- Modern browser supporting `getUserMedia` and `AudioWorklet` (Chrome, Firefox, or Safari)
-- Optional: Node.js to run the AudioWorklet unit tests
-
-No external Go dependencies, JavaScript packages, or frontend build step are required.
+- Chrome, Firefox or Safari with microphone and AudioWorklet support
+- Optional: Node.js 22+ for browser module unit tests
 
 ## Run
 
 From the repository root:
 
 ```bash
+go mod tidy
 go run ./cmd/callio
 ```
 
-Open <http://localhost:8080>. Click **Check health** to test the backend, or run:
+Open <http://localhost:8080>. The HTTP server binds to `127.0.0.1` for local-only use; localhost is a secure context for microphone access.
+
+## Manual streaming test
+
+1. Click **Check health** to verify that Go is running.
+2. Click **Start microphone & streaming** and grant microphone permission. WebSocket should show **Connected** and microphone **Recording**.
+3. Speak. The audio level should move. **Chunks sent** and **Chunks received** should both increase continuously (approximately 50 per second) as the Go backend echoes audio.
+4. To hear the returned audio, use **headphones**, then check **Play echoed audio**. This is disabled by default to prevent speaker feedback.
+5. Click **Stop**. Confirm the microphone indicator turns off and WebSocket becomes **Disconnected**. Start again to verify resource cleanup.
+6. Stop the Go server while the microphone is active: the browser should show a disconnect and release microphone resources.
+
+### Binary audio protocol
+
+Each WebSocket binary message to `GET /ws/audio` is **exactly 640 bytes** of signed **PCM16 little-endian**, **mono**, **16 kHz** audio (320 samples / 20 ms). The Go endpoint echoes the identical bytes. No JSON, Base64, disk recording or AI processing is involved yet.
+
+Invalid message types/sizes are rejected. The browser limits buffered WebSocket output to around 32 KiB and **drops new chunks** when the queue is backed up instead of accumulating latency; the **Chunks dropped** counter reports this. Playback has a separate 250 ms queue cap.
+
+### Tests
 
 ```bash
-curl http://localhost:8080/health
-# {"status":"ok"}
+go test ./...
+go test -race ./...
+go vet ./...
+node --test tests/*.test.cjs tests/*.test.mjs
 ```
 
-The server binds to `127.0.0.1` for local-only access.
-
-## Test microphone capture
-
-1. Click **Start microphone** and allow browser microphone access.
-2. Speak into the microphone. **Input level** should respond to your voice, and **Sound detected** should appear when the signal is strong enough.
-3. **Audio chunks received** should count up approximately 50 times per second, even during silence.
-4. Click **Stop microphone**. The browser's microphone usage indicator should turn off.
-5. Start again to confirm that tracks and AudioContext were released.
-
-The browser emits 20 ms chunks of **PCM signed 16-bit, little-endian, mono, 16 kHz** audio (320 samples / 640 bytes each). WebAudio's native capture rate is resampled inside `web/audio-processor.js` before encoding. Audio is not saved or sent to Go yet.
-
-Microphone capture works on localhost, which browsers treat as a secure context; remote access requires HTTPS. Permission denial or unavailable devices are displayed in the page.
+Browser testing is still required to validate actual permissions, capture and audio output hardware.
 
 ## Configuration
 
@@ -45,24 +51,14 @@ Microphone capture works on localhost, which browsers treat as a secure context;
 | --- | --- | --- |
 | `PORT` | `8080` | HTTP port (1–65535) |
 
-Example: `PORT=9090 go run ./cmd/callio`. The `.env.example` file documents settings; `.env` files are not loaded automatically.
-
-## Tests
-
-```bash
-go test ./...
-go vet ./...
-node --test tests/audio-processor.test.cjs
-```
-
-Stop with Ctrl+C (or send SIGTERM) for a graceful HTTP shutdown.
+Example: `PORT=9090 go run ./cmd/callio`. `.env.example` documents settings; `.env` is not loaded automatically.
 
 ## Layout
 
 - `cmd/callio/` — application entrypoint and dependency composition.
-- `internal/config/` — environment configuration.
-- `internal/httpapi/` — HTTP routing, health handler and server lifecycle.
-- `web/` — plain HTML, JavaScript, CSS, and microphone/audio processing.
-- `tests/` — no-dependency AudioWorklet unit tests using Node's built-in test runner.
+- `internal/config/` — configuration.
+- `internal/httpapi/` — HTTP routing, WebSocket echo handler and server lifecycle.
+- `web/` — static test page, microphone capture, WebSocket client, audio playback.
+- `tests/` — dependency-free Node tests for browser audio modules.
 
-This POC deliberately has no database, auth, WebSocket, or AI integration yet. Future dependencies should be constructed in `main` and passed to their consumers instead of being initialized inside HTTP handlers.
+The Go HTTP handler stays small and deliberately does not introduce a service abstraction before CI-04. WebSocket connections are closed on stop, disconnect or application shutdown.
