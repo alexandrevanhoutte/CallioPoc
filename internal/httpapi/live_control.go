@@ -24,12 +24,16 @@ type liveBridge struct {
 	writes sync.Mutex
 }
 
-func (b *liveBridge) writeJSON(ctx context.Context, event any) error {
-	data, err := json.Marshal(event)
-	if err != nil { return err }
+func (b *liveBridge) writeText(ctx context.Context, data []byte) error {
 	b.writes.Lock()
 	defer b.writes.Unlock()
 	return b.conn.Write(ctx, websocket.MessageText, data)
+}
+
+func (b *liveBridge) writeJSON(ctx context.Context, event any) error {
+	data, err := json.Marshal(event)
+	if err != nil { return err }
+	return b.writeText(ctx, data)
 }
 
 func (b *liveBridge) writeAudio(ctx context.Context, audio []byte) error {
