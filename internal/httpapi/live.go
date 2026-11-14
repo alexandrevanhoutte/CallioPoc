@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/call"
 	"github.com/coder/websocket"
 )
 
@@ -25,7 +26,7 @@ func audioLive(appCtx context.Context, provider realtime.VoiceProvider) http.Han
 			return
 		}
 		defer conn.CloseNow()
-		conn.SetReadLimit(audioChunkBytes)
+		conn.SetReadLimit(maxLiveMessageBytes)
 
 		ctx, cancel := context.WithCancel(r.Context())
 		defer cancel()
@@ -50,49 +51,50 @@ func audioLive(appCtx context.Context, provider realtime.VoiceProvider) http.Han
 		})
 		defer stopSession()
 
-		results := make(chan error, 2)
+		bridge := &liveBridge{
+			conn: conn,
+			session: session,
+			lifecycle: call.NewLifecycle(call.MockHandoff{}),
+		}
+		type streamResult struct {
+			source string
+			err error
+		}
+		results := make(chan streamResult, 2)
 		var wg sync.WaitGroup
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
-			results <- forwardMicrophone(ctx, conn, session)
+			results <- streamResult{source: "input", err: bridge.readInput(ctx)}
 		}()
 		go func() {
 			defer wg.Done()
-			results <- forwardModel(ctx, conn, session)
+			results <- streamResult{source: "model", err: forwardModel(ctx, bridge)}
 		}()
 
-		first := <-results
+		// On takeover the model is deliberately closed but the browser stays
+		// connected until the owner explicitly ends the simulated call.
+		for {
+			result := <-results
+			if result.source == "model" && bridge.lifecycle.State() == call.HumanActive {
+				continue
+			}
+			if result.err != nil && !errors.Is(result.err, context.Canceled) && appCtx.Err() == nil {
+				slog.Debug("live audio stream ended", "source", result.source, "error", result.err)
+			}
+			break
+		}
 		cancel()
 		_ = session.Close()
 		conn.CloseNow()
 		wg.Wait()
-
-		if first != nil && !errors.Is(first, context.Canceled) && appCtx.Err() == nil {
-			slog.Debug("live audio stream ended", "error", first)
-		}
 	}
 }
 
-func forwardMicrophone(ctx context.Context, conn *websocket.Conn, session realtime.VoiceSession) error {
-	for {
-		kind, data, err := conn.Read(ctx)
-		if err != nil {
-			return err
-		}
-		if kind != websocket.MessageBinary || len(data) != audioChunkBytes {
-			return errors.New("invalid browser audio chunk")
-		}
-		if err := session.SendAudio(ctx, data); err != nil {
-			return err
-		}
-	}
-}
-
-func forwardModel(ctx context.Context, conn *websocket.Conn, session realtime.VoiceSession) error {
+func forwardModel(ctx context.Context, bridge *liveBridge) error {
 	var lastTurn, interruptedTurn uint64
 	for {
-		event, err := session.Receive(ctx)
+		event, err := bridge.session.Receive(ctx)
 		if err != nil {
 			return err
 		}
@@ -110,7 +112,7 @@ func forwardModel(ctx context.Context, conn *websocket.Conn, session realtime.Vo
 			if event.SampleRate != 24000 || len(event.Audio) == 0 || len(event.Audio)%2 != 0 || len(event.Audio) > 64*1024 {
 				return errors.New("invalid provider output audio")
 			}
-			if err := conn.Write(ctx, websocket.MessageBinary, event.Audio); err != nil {
+			if err := bridge.writeAudio(ctx, event.Audio); err != nil {
 				return err
 			}
 		case realtime.EventTranscript:
@@ -127,10 +129,14 @@ func forwardModel(ctx context.Context, conn *websocket.Conn, session realtime.Vo
 			if err != nil {
 				return err
 			}
-			if err := conn.Write(ctx, websocket.MessageText, body); err != nil {
+			if err := bridge.writeText(ctx, body); err != nil {
 				return err
 			}
 		case realtime.EventHandoffRequired:
+			if err := bridge.lifecycle.RequestHandoff(); err != nil {
+				if errors.Is(err, call.ErrInvalidTransition) { continue }
+				return err
+			}
 			if event.Handoff == nil {
 				return errors.New("missing handoff request")
 			}
@@ -148,10 +154,11 @@ func forwardModel(ctx context.Context, conn *websocket.Conn, session realtime.Vo
 			if err != nil {
 				return err
 			}
-			if err := conn.Write(ctx, websocket.MessageText, body); err != nil {
+			if err := bridge.writeText(ctx, body); err != nil {
 				return err
 			}
 			slog.Info("handoff_required sent to browser", "reason", event.Handoff.Reason.String())
+			if err := bridge.sendState(ctx, "requested"); err != nil { return err }
 		case realtime.EventTurnEnd, realtime.EventInterrupted:
 			if event.Type == realtime.EventInterrupted {
 				if event.TurnID > interruptedTurn {
@@ -171,7 +178,7 @@ func forwardModel(ctx context.Context, conn *websocket.Conn, session realtime.Vo
 			if err != nil {
 				return err
 			}
-			if err := conn.Write(ctx, websocket.MessageText, body); err != nil {
+			if err := bridge.writeText(ctx, body); err != nil {
 				return err
 			}
 		default:
