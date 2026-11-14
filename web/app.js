@@ -160,6 +160,7 @@ async function startMicrophone(current, socket) {
 
 startButton.addEventListener("click", async () => {
   startButton.disabled = true;
+  stopButton.hidden = false;
   startButton.textContent = "Start conversation";
   modeSelector.disabled = true;
   const live = modeSelector.value === "live";
