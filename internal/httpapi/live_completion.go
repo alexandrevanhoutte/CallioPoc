@@ -31,8 +31,14 @@ func (b *liveBridge) touch() {
 }
 
 func (b *liveBridge) beginFinishing(ctx context.Context, reason string) {
-	if b.lifecycle.State() != call.AIActive || !b.finishing.CompareAndSwap(false, true) { return }
-	b.finishReason = reason // only read once finishing is true, from serialized completion path
+	b.finishMu.Lock()
+	if b.lifecycle.State() != call.AIActive || b.finishing.Load() {
+		b.finishMu.Unlock()
+		return
+	}
+	b.finishReason = reason
+	b.finishing.Store(true)
+	b.finishMu.Unlock()
 	slog.Info("call completion initiated", "reason", reason)
 	if reason == "idle_timeout" {
 		_ = b.sendFinishing(ctx)
@@ -72,10 +78,14 @@ func (b *liveBridge) watchInactivity(ctx context.Context, timeout time.Duration)
 		case <-ticker.C:
 			if b.lifecycle.State() != call.AIActive || b.finishing.Load() || b.aiSpeaking.Load() { continue }
 			last := time.Unix(0, b.lastActivity.Load())
-			if time.Since(last) >= timeout {
+			if idleExpired(time.Now(), last, timeout, b.lifecycle.State(), b.aiSpeaking.Load()) {
 				b.beginFinishing(ctx, "idle_timeout")
 				return
 			}
 		}
 	}
+}
+
+func idleExpired(now, last time.Time, timeout time.Duration, state call.State, speaking bool) bool {
+	return state == call.AIActive && !speaking && now.Sub(last) >= timeout
 }
