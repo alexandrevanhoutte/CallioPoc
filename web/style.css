@@ -198,3 +198,5 @@ footer { display: flex; gap: 8px; justify-content: space-between; padding: 26px 
   .mode-option-body { transition: none; }
 }
 .mic-ready.is-active { background: var(--accent); box-shadow: 0 0 0 4px #67dec82c; }
+
+.handoff-card .note { color: var(--muted); font-size: .79rem; line-height: 1.5; }
