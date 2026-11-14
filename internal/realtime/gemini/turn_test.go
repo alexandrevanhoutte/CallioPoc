@@ -80,3 +80,70 @@ func TestTurnState(t *testing.T) {
 		}
 	})
 }
+
+func TestAlternatingTranscriptsWithoutFinishedFlag(t *testing.T) {
+	var state turnState
+
+	// Gemini may omit Finished on every transcription update. Each
+	// complete assistant turn must still get a different segment ID.
+	messages := []*genai.LiveServerContent{
+		{OutputTranscription: &genai.Transcription{Text: "Bonjour."}},
+		{TurnComplete: true},
+		{InputTranscription: &genai.Transcription{Text: "Je voudrais"}},
+		{InputTranscription: &genai.Transcription{Text: " un entretien."}},
+		{OutputTranscription: &genai.Transcription{Text: "Avec qui ?"}},
+		{TurnComplete: true},
+		{InputTranscription: &genai.Transcription{Text: "Alexandre."}},
+		{OutputTranscription: &genai.Transcription{Text: "Je vous remercie."}},
+		{TurnComplete: true},
+	}
+	for _, message := range messages {
+		if err := state.process(message); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantSpeakers := []realtime.Speaker{
+		realtime.SpeakerAI, realtime.SpeakerCaller,
+		realtime.SpeakerAI, realtime.SpeakerCaller, realtime.SpeakerAI,
+	}
+	got := state.history.Finalized()
+	if len(got) != len(wantSpeakers) {
+		t.Fatalf("expected %d alternating transcript bubbles, got %d: %+v", len(wantSpeakers), len(got), got)
+	}
+	for i, speaker := range wantSpeakers {
+		if got[i].Speaker != speaker {
+			t.Fatalf("bubble %d: got %s, want %s", i, got[i].Speaker, speaker)
+		}
+		if i > 0 && got[i].ID == got[i-1].ID {
+			t.Fatalf("bubbles %d and %d share an ID", i-1, i)
+		}
+	}
+	if got[1].Text != "Je voudrais un entretien." {
+		t.Fatalf("caller chunks not combined properly: %q", got[1].Text)
+	}
+}
+
+func TestLateCallerTranscriptKeepsLogicalOrder(t *testing.T) {
+	var state turnState
+	for _, message := range []*genai.LiveServerContent{
+		{OutputTranscription: &genai.Transcription{Text: "Bonjour."}},
+		{GenerationComplete: true},
+		// An AI response may arrive before the input transcription event.
+		{OutputTranscription: &genai.Transcription{Text: "Quel entretien ?"}},
+		{InputTranscription: &genai.Transcription{Text: "Je voudrais un entretien."}},
+		{TurnComplete: true},
+	} {
+		if err := state.process(message); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := state.history.Snapshot()
+	if len(got) != 3 {
+		t.Fatalf("expected 3 turns, got %+v", got)
+	}
+	if got[0].Speaker != realtime.SpeakerAI || got[0].Order != 1 ||
+		got[1].Speaker != realtime.SpeakerCaller || got[1].Order != 2 ||
+		got[2].Speaker != realtime.SpeakerAI || got[2].Order != 3 {
+		t.Fatalf("transcript ordering incorrect: %+v", got)
+	}
+}

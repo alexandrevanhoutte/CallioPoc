@@ -77,6 +77,8 @@ func liveConfig() *genai.LiveConnectConfig {
 	silenceDuration := int32(500)
 	return &genai.LiveConnectConfig{
 		ResponseModalities: []genai.Modality{genai.ModalityAudio},
+		InputAudioTranscription:  &genai.AudioTranscriptionConfig{},
+		OutputAudioTranscription: &genai.AudioTranscriptionConfig{},
 		SystemInstruction: &genai.Content{
 			Parts: []*genai.Part{{Text: frenchInstructions}},
 		},

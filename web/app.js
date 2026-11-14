@@ -1,6 +1,7 @@
 import { MicrophoneCapture } from "./microphone.js";
 import { AudioSocket } from "./websocket.js";
 import { AudioPlayer } from "./audio-player.js";
+import { TranscriptView } from "./transcript.js";
 
 const healthButton = document.querySelector("#check-health");
 const healthStatus = document.querySelector("#health-status");
@@ -38,6 +39,10 @@ const playbackDropped = document.querySelector("#playback-dropped");
 const silentChunks = document.querySelector("#ai-silent-chunks");
 const interruptions = document.querySelector("#ai-interruptions");
 const echo = document.querySelector("#echo-playback");
+const transcript = new TranscriptView(
+  document.querySelector("#transcript-list"),
+  document.querySelector("#transcript-status"),
+);
 
 let session = null;
 
@@ -66,6 +71,7 @@ async function stopSession(error) {
     micStatus.textContent = error ? `Error: ${readableError(error)}` : "Stopped";
     socketStatus.textContent = error ? "Disconnected (error)" : "Disconnected";
     aiStatus.textContent = error ? readableError(error) : "Idle";
+    transcript.finish();
     signalStatus.textContent = "No active audio input";
     level.value = 0;
     startButton.disabled = false;
@@ -119,6 +125,7 @@ startButton.addEventListener("click", async () => {
   aiStatus.textContent = live ? "Connecting to Gemini…" : "Echo test";
   signalStatus.textContent = "Waiting for audio chunks…";
   level.value = 0;
+  transcript.clear();
   for (const counter of [chunks, sent, received, dropped, playbackScheduled, playbackDropped, silentChunks, interruptions]) counter.value = "0";
 
   const current = { socket: null, microphone: null, player: new AudioPlayer(), live, microphoneStarting: false, generationFinished: false };
@@ -156,6 +163,7 @@ startButton.addEventListener("click", async () => {
     },
     onEvent: (event) => {
       if (session !== current) return;
+      if (event.type === "transcript") transcript.update(event);
       if (event.type === "turn_end") {
         current.generationFinished = true;
         aiStatus.textContent = current.player.sources.size > 0

@@ -53,7 +53,8 @@ type Event struct {
 	TurnID     uint64 // Local generation ID for ordering and diagnostics, not transmitted with PCM.
 	Audio      []byte
 	SampleRate int
-	Text       string
+	Text       string // Used by legacy/non-transcript control events.
+	Transcript *TranscriptSegment
 }
 
 // VoiceProvider opens one live conversation for each browser session.
