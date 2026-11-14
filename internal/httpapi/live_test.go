@@ -399,3 +399,79 @@ func TestInvalidLifecycleCommandDoesNotChangeState(t *testing.T) {
 		t.Fatalf("expected completion after errors, payload=%s err=%v", body, err)
 	}
 }
+
+func TestLiveNaturalCompletionWaitsForPlayback(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := &fakeVoiceProvider{}
+	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	defer server.Close()
+
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+	if err != nil { t.Fatal(err) }
+	defer conn.CloseNow()
+
+	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 640)); err != nil { t.Fatal(err) }
+	if kind, _, err := conn.Read(ctx); err != nil || kind != websocket.MessageBinary {
+		t.Fatalf("expected initial audio, kind=%v err=%v", kind, err)
+	}
+	provider.mu.Lock()
+	s := provider.session
+	provider.mu.Unlock()
+
+	// The tool request must not immediately disconnect or discard final audio.
+	s.events <- realtime.Event{Type: realtime.EventCallEndRequested}
+	s.events <- realtime.Event{Type: realtime.EventAudio, TurnID: 2, Audio: make([]byte, 960), SampleRate: 24000}
+	s.events <- realtime.Event{Type: realtime.EventTurnEnd, TurnID: 2}
+
+	kind, _, err := conn.Read(ctx)
+	if err != nil { t.Fatal(err) }
+	if kind != websocket.MessageBinary { t.Fatalf("farewell audio was discarded: %v", kind) }
+	kind, payload, err := conn.Read(ctx)
+	if err != nil { t.Fatal(err) }
+	if kind != websocket.MessageText || !bytes.Contains(payload, []byte(`"type":"turn_end"`)) {
+		t.Fatalf("expected turn end before finish signal, got %s", payload)
+	}
+	kind, payload, err = conn.Read(ctx)
+	if err != nil { t.Fatal(err) }
+	if kind != websocket.MessageText || !bytes.Contains(payload, []byte(`"type":"call_finishing"`)) {
+		t.Fatalf("expected finishing event, got %s", payload)
+	}
+	select {
+	case <-s.closed: t.Fatal("provider closed before browser confirmed playback")
+	default:
+	}
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"playback_finished"}`)); err != nil { t.Fatal(err) }
+	kind, payload, err = conn.Read(ctx)
+	if err != nil { t.Fatal(err) }
+	if kind != websocket.MessageText || !bytes.Contains(payload, []byte(`"state":"completed"`)) ||
+		!bytes.Contains(payload, []byte(`"outcome":"caller_finished"`)) {
+		t.Fatalf("expected completed state after playback, got %s", payload)
+	}
+	select {
+	case <-s.closed:
+	case <-time.After(time.Second): t.Fatal("Gemini not closed after completion")
+	}
+}
+
+func TestPlaybackAcknowledgementRequiresFinishing(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := &fakeVoiceProvider{}
+	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	defer server.Close()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+	if err != nil { t.Fatal(err) }
+	defer conn.CloseNow()
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"playback_finished"}`)); err != nil { t.Fatal(err) }
+	kind, payload, err := conn.Read(ctx)
+	if err != nil { t.Fatal(err) }
+	if kind != websocket.MessageText || !bytes.Contains(payload, []byte(`"type":"call_error"`)) {
+		t.Fatalf("expected rejected premature playback ack, got %s", payload)
+	}
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"end_call"}`)); err != nil { t.Fatal(err) }
+	_, payload, err = conn.Read(ctx)
+	if err != nil || !bytes.Contains(payload, []byte(`"state":"completed"`)) {
+		t.Fatalf("manual completion failed: %s (%v)", payload, err)
+	}
+}
