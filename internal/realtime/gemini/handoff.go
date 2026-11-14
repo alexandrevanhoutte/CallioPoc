@@ -13,7 +13,7 @@ const handoffToolName = "request_handoff"
 func handoffTool() *genai.Tool {
 	return &genai.Tool{FunctionDeclarations: []*genai.FunctionDeclaration{{
 		Name: handoffToolName,
-		Description: "Demande de mise en relation avec le propriétaire de l'assistant. À utiliser si l'appelant souhaite lui parler, ou si l'assistant ne peut pas traiter une demande importante. Ne prétend jamais effectuer le transfert.",
+		Description: "Outil obligatoire pour enregistrer une demande de mise en relation avec le propriétaire. Appeler cet outil AVANT de confirmer oralement la prise en compte. Utiliser si l'appelant veut lui parler ou si l'assistant ne peut pas traiter une demande importante. Ne transfère pas réellement l'appel.",
 		Parameters: &genai.Schema{
 			Type: genai.TypeObject,
 			Properties: map[string]*genai.Schema{
