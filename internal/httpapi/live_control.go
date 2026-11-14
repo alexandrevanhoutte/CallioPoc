@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 
 	"github.com/alexandrevanhoutte/CallioPoc/internal/call"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
@@ -22,6 +23,11 @@ type liveBridge struct {
 	session realtime.VoiceSession
 	lifecycle *call.Lifecycle
 	writes sync.Mutex
+	finishing atomic.Bool
+	finishSent atomic.Bool
+	aiSpeaking atomic.Bool
+	lastActivity atomic.Int64
+	finishReason string
 }
 
 func (b *liveBridge) writeText(ctx context.Context, data []byte) error {
@@ -65,7 +71,7 @@ func (b *liveBridge) readInput(ctx context.Context) error {
 		if err != nil { return err }
 		if kind == websocket.MessageBinary {
 			if len(data) != audioChunkBytes { return errors.New("invalid browser audio chunk") }
-			if b.lifecycle.State() != call.AIActive && b.lifecycle.State() != call.HandoffRequired {
+			if b.finishing.Load() || (b.lifecycle.State() != call.AIActive && b.lifecycle.State() != call.HandoffRequired) {
 				continue // Ignore buffered microphone chunks after takeover.
 			}
 			if err := b.session.SendAudio(ctx, data); err != nil {
@@ -82,6 +88,15 @@ func (b *liveBridge) readInput(ctx context.Context) error {
 			return fmt.Errorf("decode control message: %w", err)
 		}
 		switch message.Type {
+		case "playback_finished":
+			if !b.finishSent.Load() || b.lifecycle.State() != call.AIActive {
+				if err := b.sendControlError(ctx, message.Type, errors.New("call is not finishing")); err != nil { return err }
+				continue
+			}
+			if err := b.lifecycle.Complete(); err != nil { return err }
+			slog.Info("call completed after browser playback", "reason", b.finishReason)
+			if err := b.sendState(ctx, b.finishReason); err != nil { return err }
+			return nil
 		case "accept":
 			if err := b.lifecycle.Accept(ctx); err != nil {
 				if err := b.sendControlError(ctx, message.Type, err); err != nil { return err }
