@@ -167,6 +167,7 @@ func forwardModel(ctx context.Context, bridge *liveBridge) error {
 			if err := bridge.sendState(ctx, "requested"); err != nil { return err }
 		case realtime.EventTurnEnd, realtime.EventInterrupted:
 			if event.Type == realtime.EventInterrupted {
+				bridge.cancelFinishing(ctx)
 				bridge.aiSpeaking.Store(false)
 				if event.TurnID > interruptedTurn {
 					interruptedTurn = event.TurnID
