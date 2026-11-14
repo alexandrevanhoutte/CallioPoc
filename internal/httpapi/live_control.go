@@ -29,6 +29,7 @@ type liveBridge struct {
 	lastActivity atomic.Int64
 	finishReason string
 	finishMu sync.Mutex
+	finishGeneration atomic.Uint64
 }
 
 func (b *liveBridge) writeText(ctx context.Context, data []byte) error {
@@ -72,7 +73,7 @@ func (b *liveBridge) readInput(ctx context.Context) error {
 		if err != nil { return err }
 		if kind == websocket.MessageBinary {
 			if len(data) != audioChunkBytes { return errors.New("invalid browser audio chunk") }
-			if b.finishing.Load() || (b.lifecycle.State() != call.AIActive && b.lifecycle.State() != call.HandoffRequired) {
+			if b.finishSent.Load() || (b.lifecycle.State() != call.AIActive && b.lifecycle.State() != call.HandoffRequired) {
 				continue // Ignore buffered microphone chunks after takeover.
 			}
 			if err := b.session.SendAudio(ctx, data); err != nil {
