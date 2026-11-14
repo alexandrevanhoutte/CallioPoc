@@ -113,6 +113,61 @@ func TestLiveBridge(t *testing.T) {
 	}
 }
 
+func TestInterruptedTurnDoesNotForwardStaleAudio(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := &fakeVoiceProvider{}
+	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	defer server.Close()
+
+	uri := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/live"
+	conn, _, err := websocket.Dial(ctx, uri, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+
+	// First input ensures the provider is ready and gives a baseline chunk.
+	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 640)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	provider.mu.Lock()
+	s := provider.session
+	provider.mu.Unlock()
+
+	s.events <- realtime.Event{Type: realtime.EventInterrupted, TurnID: 1}
+	s.events <- realtime.Event{Type: realtime.EventAudio, TurnID: 1, Audio: make([]byte, 960), SampleRate: 24000}
+	s.events <- realtime.Event{Type: realtime.EventTurnEnd, TurnID: 1}
+	nextAudio := bytes.Repeat([]byte{5, 9}, 480)
+	s.events <- realtime.Event{Type: realtime.EventAudio, TurnID: 2, Audio: nextAudio, SampleRate: 24000}
+	s.events <- realtime.Event{Type: realtime.EventTurnEnd, TurnID: 2}
+
+	typ, payload, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if typ != websocket.MessageText || !bytes.Contains(payload, []byte(`"type":"interrupted"`)) {
+		t.Fatalf("expected interruption signal first, got kind=%d payload=%s", typ, payload)
+	}
+	typ, payload, err = conn.Read(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if typ != websocket.MessageBinary || !bytes.Equal(payload, nextAudio) {
+		t.Fatalf("expected fresh turn 2 audio without stale turn 1 output, got kind=%d bytes=%d", typ, len(payload))
+	}
+	typ, payload, err = conn.Read(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if typ != websocket.MessageText || !bytes.Contains(payload, []byte(`"type":"turn_end"`)) {
+		t.Fatalf("expected completion of fresh turn, got kind=%d payload=%s", typ, payload)
+	}
+}
+
 func TestLiveWithoutProvider(t *testing.T) {
 	server := httptest.NewServer(httpapi.NewRouter(context.Background(), fstest.MapFS{}, nil))
 	defer server.Close()

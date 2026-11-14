@@ -39,6 +39,8 @@ func audioLive(appCtx context.Context, provider realtime.VoiceProvider) http.Han
 			return
 		}
 		defer session.Close()
+		slog.Info("live session started")
+		defer slog.Info("live session closed")
 
 		// Both directions run independently. On disconnect/error, cancellation
 		// closes the provider and WebSocket, so no goroutine is left blocked.
@@ -88,6 +90,7 @@ func forwardMicrophone(ctx context.Context, conn *websocket.Conn, session realti
 }
 
 func forwardModel(ctx context.Context, conn *websocket.Conn, session realtime.VoiceSession) error {
+	var lastTurn, interruptedTurn uint64
 	for {
 		event, err := session.Receive(ctx)
 		if err != nil {
@@ -95,6 +98,15 @@ func forwardModel(ctx context.Context, conn *websocket.Conn, session realtime.Vo
 		}
 		switch event.Type {
 		case realtime.EventAudio:
+			// A provider may deliver buffered audio after announcing cancellation.
+			// Never forward explicitly stale generations to the browser.
+			if event.TurnID != 0 && event.TurnID <= interruptedTurn {
+				continue
+			}
+			if event.TurnID != 0 && event.TurnID != lastTurn {
+				lastTurn = event.TurnID
+				slog.Info("assistant turn started", "turn_id", lastTurn)
+			}
 			if event.SampleRate != 24000 || len(event.Audio) == 0 || len(event.Audio)%2 != 0 || len(event.Audio) > 64*1024 {
 				return errors.New("invalid provider output audio")
 			}
@@ -103,7 +115,15 @@ func forwardModel(ctx context.Context, conn *websocket.Conn, session realtime.Vo
 			}
 		case realtime.EventTranscript, realtime.EventTurnEnd, realtime.EventInterrupted:
 			if event.Type == realtime.EventInterrupted {
-				slog.Info("Gemini Live model turn interrupted")
+				if event.TurnID > interruptedTurn {
+					interruptedTurn = event.TurnID
+				}
+				slog.Info("assistant turn interrupted", "turn_id", event.TurnID)
+			} else if event.Type == realtime.EventTurnEnd {
+				if event.TurnID != 0 && event.TurnID <= interruptedTurn {
+					continue
+				}
+				slog.Info("assistant turn completed", "turn_id", event.TurnID)
 			}
 			body, err := json.Marshal(map[string]string{
 				"type": event.Type.String(),
