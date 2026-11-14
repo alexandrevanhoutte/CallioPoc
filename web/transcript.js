@@ -10,7 +10,7 @@ export class TranscriptStore {
     if (!event || event.type !== "transcript" ||
         typeof event.segment_id !== "string" || !event.segment_id ||
         !["CALLER", "AI"].includes(event.speaker) ||
-        typeof event.text !== "string" || !event.text.trim()) return null;
+        typeof event.text !== "string" || event.text.length === 0) return null;
 
     const old = this.segments.get(event.segment_id);
     if (old?.final || (old && old.speaker !== event.speaker)) return null;
@@ -35,8 +35,8 @@ export class TranscriptStore {
   addHandoff(event) {
     if (this.handoff || event?.type !== "handoff_required" ||
         !["owner_requested", "ai_unable"].includes(event.reason) ||
-        typeof event.context?.purpose !== "string" || !event.context.purpose.trim() ||
-        typeof event.context?.summary !== "string" || !event.context.summary.trim()) return false;
+        typeof event.context?.purpose !== "string" || event.context.purpose.length === 0 ||
+        typeof event.context?.summary !== "string" || event.context.summary.length === 0) return false;
 
     // Mark the position in the logical transcript order at detection time.
     // Late segments with earlier order will still appear before this card.
@@ -111,7 +111,7 @@ export class TranscriptView {
     title.textContent = "Handoff requested";
     row.append(title);
     const detail = (label, value) => {
-      if (typeof value !== "string" || !value.trim()) return;
+      if (typeof value !== "string" || value.length === 0) return;
       const line = document.createElement("p");
       line.textContent = `${label}: ${value}`;
       row.append(line);

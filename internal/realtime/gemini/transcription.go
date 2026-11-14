@@ -2,7 +2,6 @@ package gemini
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
@@ -56,7 +55,7 @@ func (s *transcriptionState) update(speaker realtime.Speaker, value *genai.Trans
 		prefix = "ai"
 	}
 	if stream.current == nil {
-		if strings.TrimSpace(value.Text) == "" {
+		if len(value.Text) == 0 {
 			return realtime.Event{}, false
 		}
 		stream.sequence++
