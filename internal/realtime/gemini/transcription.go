@@ -9,16 +9,40 @@ import (
 	"google.golang.org/genai"
 )
 
-// transcriptionState receives independent, incremental text for both speakers.
-// Only the Gemini receiver goroutine accesses this state.
+// Gemini sends input transcription independently of output. Reserve caller
+// positions so delayed caller text can precede the assistant's next reply.
 type transcriptionState struct {
 	caller transcriptStream
 	ai     transcriptStream
+
+	nextOrder  uint64
+	callerSlot uint64
+	aiOrder    uint64
+	aiActive   bool
 }
 
 type transcriptStream struct {
 	sequence uint64
 	current  *realtime.TranscriptSegment
+}
+
+func (s *transcriptionState) beginAI() {
+	if s.aiActive {
+		return
+	}
+	s.aiActive = true
+	s.nextOrder++
+	s.aiOrder = s.nextOrder
+}
+
+func (s *transcriptionState) endAI() (realtime.Event, bool) {
+	event, ok := s.finish(realtime.SpeakerAI)
+	if s.aiActive {
+		s.aiActive = false
+		s.nextOrder++
+		s.callerSlot = s.nextOrder
+	}
+	return event, ok
 }
 
 func (s *transcriptionState) update(speaker realtime.Speaker, value *genai.Transcription) (realtime.Event, bool) {
@@ -36,14 +60,28 @@ func (s *transcriptionState) update(speaker realtime.Speaker, value *genai.Trans
 			return realtime.Event{}, false
 		}
 		stream.sequence++
+		var order uint64
+		if speaker == realtime.SpeakerAI {
+			s.beginAI()
+			order = s.aiOrder
+		} else if s.callerSlot != 0 {
+			order = s.callerSlot
+			s.callerSlot = 0
+		} else {
+			s.nextOrder++
+			order = s.nextOrder
+		}
 		stream.current = &realtime.TranscriptSegment{
 			ID: fmt.Sprintf("%s-%d", prefix, stream.sequence),
+			Order: order,
 			Speaker: speaker,
 			Timestamp: time.Now().UTC(),
 		}
 	}
 	current := stream.current
-	current.Text = appendTranscriptText(current.Text, value.Text)
+	// Treat Gemini transcription text as a delta. Repeated words may be
+	// intentional, so don't infer snapshot updates from common prefixes.
+	current.Text += value.Text
 	current.Final = value.Finished
 	segment := *current
 	if segment.Final {
@@ -52,8 +90,6 @@ func (s *transcriptionState) update(speaker realtime.Speaker, value *genai.Trans
 	return realtime.Event{Type: realtime.EventTranscript, Transcript: &segment}, true
 }
 
-// finish closes the current utterance when Gemini omits Transcription.Finished.
-// The same segment ID is emitted with Final=true, so the UI updates its row.
 func (s *transcriptionState) finish(speaker realtime.Speaker) (realtime.Event, bool) {
 	stream := &s.caller
 	if speaker == realtime.SpeakerAI {
@@ -69,20 +105,12 @@ func (s *transcriptionState) finish(speaker realtime.Speaker) (realtime.Event, b
 }
 
 func (s *transcriptionState) interruptAI() {
-	// Interrupted assistant utterances should not be finalized automatically.
+	// Keep already emitted partial text, but never finalize interrupted
+	// assistant speech as a completed statement.
 	s.ai.current = nil
-}
-
-// Gemini typically sends deltas. Also support retransmitted cumulative prefixes.
-func appendTranscriptText(current, incoming string) string {
-	if incoming == "" {
-		return current
+	if s.aiActive {
+		s.aiActive = false
+		s.nextOrder++
+		s.callerSlot = s.nextOrder
 	}
-	if strings.HasPrefix(incoming, current) {
-		return incoming
-	}
-	if strings.HasSuffix(current, incoming) {
-		return current
-	}
-	return current + incoming
 }

@@ -23,3 +23,13 @@ test("malformed transcription and changed speaker cannot corrupt history", () =>
   assert.equal(history.upsert({ type: "transcript", speaker: "CALLER", segment_id: "ai-1", text: "wrong" }), null);
   assert.equal(history.snapshot()[0].text, "Bonjour");
 });
+
+test("late caller text is ordered before the assistant reply", () => {
+  const history = new TranscriptStore();
+  history.upsert({ type: "transcript", speaker: "AI", segment_id: "ai-1", order: 1, text: "Bonjour", final: true });
+  history.upsert({ type: "transcript", speaker: "AI", segment_id: "ai-2", order: 3, text: "Quel entretien ?", final: true });
+  history.upsert({ type: "transcript", speaker: "CALLER", segment_id: "caller-1", order: 2, text: "Je voudrais un entretien", final: false });
+  history.upsert({ type: "transcript", speaker: "CALLER", segment_id: "caller-1", order: 2, text: "Je voudrais un entretien.", final: true });
+  assert.deepEqual(history.snapshot().map(s => s.id), ["ai-1", "caller-1", "ai-2"]);
+  assert.deepEqual(history.finalized().map(s => s.order), [1, 2, 3]);
+});

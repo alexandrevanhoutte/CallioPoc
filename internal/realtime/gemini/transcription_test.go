@@ -65,3 +65,16 @@ func TestTranscriptionFinishWithoutGeminiFinishedFlag(t *testing.T) {
 		t.Fatal("new assistant response must have a fresh segment ID")
 	}
 }
+
+func TestRepeatedWordDeltasAreNotDiscarded(t *testing.T) {
+	var state transcriptionState
+	for _, text := range []string{"oui", " oui", " oui"} {
+		if _, ok := state.update(realtime.SpeakerCaller, &genai.Transcription{Text: text}); !ok {
+			t.Fatal("expected transcript delta")
+		}
+	}
+	final, ok := state.finish(realtime.SpeakerCaller)
+	if !ok || final.Transcript.Text != "oui oui oui" {
+		t.Fatalf("repeated words must not be deduplicated: %+v", final.Transcript)
+	}
+}

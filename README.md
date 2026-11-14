@@ -80,6 +80,7 @@ The backend forwards JSON WebSocket events alongside the existing binary PCM16 m
 {
   "type": "transcript",
   "segment_id": "caller-1",
+  "order": 2,
   "speaker": "CALLER",
   "text": "Bonjour, je voudrais parler à Alexandre.",
   "final": true,
@@ -87,13 +88,13 @@ The backend forwards JSON WebSocket events alongside the existing binary PCM16 m
 }
 ```
 
-`AI` is the other supported speaker. Events with the same `segment_id` replace earlier provisional text. A `final: true` segment is immutable. `Finished` from Gemini determines finalization, **not** model `turn_end`; input and output transcription timestamps may not align with audio.
+`AI` is the other supported speaker. Events with the same `segment_id` replace earlier provisional text. A `final: true` segment is immutable. A final segment is immutable once emitted. Output transcription may finalize on the AI generation boundary when Gemini omits `Finished`; caller transcription is handled independently. Input/output transcript timestamps may not align with audio.
 
 The `realtime.Transcript` collector exposes `Snapshot()` and `Finalized()` for CI-09/CI-10. The browser keeps transcript state in memory and retains it after Stop until the next conversation or page reload. **No file or database persistence** is added in CI-06. Unfinished interrupted AI speech is displayed as provisional and excluded from finalized snapshots.
 
 Manual check: begin a Gemini Live conversation, confirm the greeting appears as Callio and spoken French appears as Caller; interrupt Callio, speak again, click Stop, and verify there are no duplicated lines and no transcript data in the filesystem.
 
-Gemini does not always set `Transcription.Finished` on individual updates. Segment boundaries therefore also use assistant response completion and the next speaker's transcription. This keeps separate caller/assistant turns in separate rows rather than merging all speech from the same speaker. Real-time transcript timestamps remain best-effort because transcription events may arrive asynchronously.
+Gemini does not always set `Transcription.Finished`. Output transcription is finalized on `GenerationComplete` (or `TurnComplete` as a fallback); input transcription is independently timed and is finalized on `Finished` or the end of the related completed model turn when available. Gemini transcription text is assembled as **incremental deltas**, so repeated words are preserved. A reserved `order` lets delayed caller text appear before the subsequent assistant turn, even when the associated JSON message arrives later. No content-based deduplication is attempted. Interrupted assistant speech remains provisional. This ordering is best-effort: Gemini does not give a universal utterance ID for correlating arbitrarily late or overlapping caller input, and recognition can be inaccurate.
 
 ## Validation commands
 

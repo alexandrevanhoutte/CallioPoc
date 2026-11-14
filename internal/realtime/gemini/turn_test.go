@@ -122,3 +122,28 @@ func TestAlternatingTranscriptsWithoutFinishedFlag(t *testing.T) {
 		t.Fatalf("caller chunks not combined properly: %q", got[1].Text)
 	}
 }
+
+func TestLateCallerTranscriptKeepsLogicalOrder(t *testing.T) {
+	var state turnState
+	for _, message := range []*genai.LiveServerContent{
+		{OutputTranscription: &genai.Transcription{Text: "Bonjour."}},
+		{GenerationComplete: true},
+		// An AI response may arrive before the input transcription event.
+		{OutputTranscription: &genai.Transcription{Text: "Quel entretien ?"}},
+		{InputTranscription: &genai.Transcription{Text: "Je voudrais un entretien."}},
+		{TurnComplete: true},
+	} {
+		if err := state.process(message); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := state.history.Snapshot()
+	if len(got) != 3 {
+		t.Fatalf("expected 3 turns, got %+v", got)
+	}
+	if got[0].Speaker != realtime.SpeakerAI || got[0].Order != 1 ||
+		got[1].Speaker != realtime.SpeakerCaller || got[1].Order != 2 ||
+		got[2].Speaker != realtime.SpeakerAI || got[2].Order != 3 {
+		t.Fatalf("transcript ordering incorrect: %+v", got)
+	}
+}

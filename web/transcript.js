@@ -16,6 +16,7 @@ export class TranscriptStore {
     const segment = {
       id: event.segment_id,
       speaker: event.speaker,
+      order: Number.isSafeInteger(event.order) && event.order > 0 ? event.order : (old?.order ?? Number.MAX_SAFE_INTEGER),
       text: event.text,
       final: event.final === true,
       timestamp: old?.timestamp ?? event.timestamp ?? null,
@@ -25,7 +26,9 @@ export class TranscriptStore {
   }
 
   snapshot() {
-    return [...this.segments.values()].map(segment => ({ ...segment }));
+    return [...this.segments.values()]
+      .sort((a, b) => a.order - b.order)
+      .map(segment => ({ ...segment }));
   }
 
   finalized() {
@@ -57,11 +60,17 @@ export class TranscriptView {
       speaker.textContent = segment.speaker === "AI" ? "Callio" : "Caller";
       const text = document.createElement("p");
       row.append(speaker, text);
-      this.container.append(row);
       this.rows.set(segment.id, row);
+      this.container.append(row);
     }
     row.classList.toggle("transcript-partial", !segment.final);
     row.querySelector("p").textContent = segment.text;
+    // A late caller transcription can belong before an assistant reply.
+    // Reorder existing nodes instead of recreating rows (and losing updates).
+    for (const item of this.store.snapshot()) {
+      const node = this.rows.get(item.id);
+      if (node) this.container.append(node);
+    }
     this.container.scrollTop = this.container.scrollHeight;
   }
 

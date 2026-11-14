@@ -1,6 +1,9 @@
 package realtime
 
-import "time"
+import (
+	"sort"
+	"time"
+)
 
 // Speaker is intentionally provider-independent.
 type Speaker string
@@ -55,12 +58,22 @@ func (t *Transcript) Apply(segment TranscriptSegment) bool {
 }
 
 func (t *Transcript) Snapshot() []TranscriptSegment {
-	return append([]TranscriptSegment(nil), t.segments...)
+	result := append([]TranscriptSegment(nil), t.segments...)
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].Order == 0 {
+			return false
+		}
+		if result[j].Order == 0 {
+			return true
+		}
+		return result[i].Order < result[j].Order
+	})
+	return result
 }
 
 func (t *Transcript) Finalized() []TranscriptSegment {
 	var result []TranscriptSegment
-	for _, segment := range t.segments {
+	for _, segment := range t.Snapshot() {
 		if segment.Final {
 			result = append(result, segment)
 		}
