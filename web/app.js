@@ -21,6 +21,7 @@ healthButton.addEventListener("click", async () => {
   }
 });
 
+const modeSelector = document.querySelector("#stream-mode");
 const startButton = document.querySelector("#mic-start");
 const stopButton = document.querySelector("#mic-stop");
 const micStatus = document.querySelector("#mic-status");
@@ -28,9 +29,14 @@ const signalStatus = document.querySelector("#mic-signal");
 const level = document.querySelector("#mic-level");
 const chunks = document.querySelector("#mic-chunks");
 const socketStatus = document.querySelector("#ws-status");
+const aiStatus = document.querySelector("#ai-status");
 const sent = document.querySelector("#ws-sent");
 const received = document.querySelector("#ws-received");
 const dropped = document.querySelector("#ws-dropped");
+const playbackScheduled = document.querySelector("#playback-scheduled");
+const playbackDropped = document.querySelector("#playback-dropped");
+const silentChunks = document.querySelector("#ai-silent-chunks");
+const interruptions = document.querySelector("#ai-interruptions");
 const echo = document.querySelector("#echo-playback");
 
 let session = null;
@@ -46,51 +52,33 @@ async function stopSession(error) {
   if (!session) return;
   const current = session;
   session = null;
+  clearTimeout(current.greetingTimer);
   startButton.disabled = true;
   stopButton.disabled = true;
+  modeSelector.disabled = false;
   echo.disabled = true;
   echo.checked = false;
   try {
-    // Always release all resources, even if one cleanup fails.
-    try { await current.microphone?.stop(); } catch (e) { error ??= e; }
+    // Always attempt all cleanup operations, even if one fails.
     try { current.socket.close(); } catch (e) { error ??= e; }
+    try { await current.microphone?.stop(); } catch (e) { error ??= e; }
     try { await current.player.disable(); } catch (e) { error ??= e; }
   } finally {
     micStatus.textContent = error ? `Error: ${readableError(error)}` : "Stopped";
     socketStatus.textContent = error ? "Disconnected (error)" : "Disconnected";
+    aiStatus.textContent = error ? readableError(error) : "Idle";
     signalStatus.textContent = "No active audio input";
     level.value = 0;
     startButton.disabled = false;
   }
 }
 
-startButton.addEventListener("click", async () => {
-  startButton.disabled = true;
-  micStatus.textContent = "Connecting to Go…";
-  socketStatus.textContent = "Connecting…";
-  signalStatus.textContent = "Waiting for audio chunks…";
-  level.value = 0;
-  for (const counter of [chunks, sent, received, dropped]) counter.value = "0";
-
-  const current = { socket: null, microphone: null, player: new AudioPlayer() };
-  const socket = new AudioSocket({
-    onChunk: (buffer) => {
-      if (session !== current) return;
-      received.value = String(Number(received.value) + 1);
-      if (echo.checked) current.player.play(buffer);
-    },
-    onDisconnect: (error) => {
-      if (session === current) void stopSession(error);
-    },
-  });
-  current.socket = socket;
-  session = current;
-
+async function startMicrophone(current, socket) {
+  if (session !== current || current.microphone || current.microphoneStarting) return;
+  current.microphoneStarting = true;
+  const live = current.live;
   try {
-    await socket.connect();
-    if (session !== current) return;
-    socketStatus.textContent = "Connected";
-
+    micStatus.textContent = "Requesting microphone permission…";
     const microphone = new MicrophoneCapture({
       onAudioChunk: (pcm16, rms) => {
         if (session !== current) return;
@@ -108,15 +96,101 @@ startButton.addEventListener("click", async () => {
       onError: (error) => { if (session === current) void stopSession(error); },
     });
     current.microphone = microphone;
-    micStatus.textContent = "Requesting microphone permission…";
     await microphone.start();
     if (session !== current) {
-      await microphone.stop(); // Startup finished after a disconnect.
+      await microphone.stop();
       return;
     }
     micStatus.textContent = "Recording";
+    aiStatus.textContent = live ? "Listening" : "Echo test";
+    if (!live) echo.disabled = false;
+  } catch (error) {
+    if (session === current) await stopSession(error);
+  } finally {
+    current.microphoneStarting = false;
+  }
+}
+
+startButton.addEventListener("click", async () => {
+  startButton.disabled = true;
+  modeSelector.disabled = true;
+  const live = modeSelector.value === "live";
+  micStatus.textContent = "Connecting to Go…";
+  socketStatus.textContent = "Connecting…";
+  aiStatus.textContent = live ? "Connecting to Gemini…" : "Echo test";
+  signalStatus.textContent = "Waiting for audio chunks…";
+  level.value = 0;
+  for (const counter of [chunks, sent, received, dropped, playbackScheduled, playbackDropped, silentChunks, interruptions]) counter.value = "0";
+
+  const current = { socket: null, microphone: null, player: new AudioPlayer(), live, greetingTimer: null, microphoneStarting: false };
+  const socket = new AudioSocket({
+    endpoint: live ? "/ws/live" : "/ws/audio",
+    onChunk: (buffer) => {
+      if (session !== current) return;
+      received.value = String(Number(received.value) + 1);
+      if (live && new Uint8Array(buffer).every((byte) => byte === 0)) {
+        silentChunks.value = String(Number(silentChunks.value) + 1);
+      }
+      if (live || echo.checked) {
+        if (current.player.play(buffer, live ? 24000 : 16000)) {
+          playbackScheduled.value = String(Number(playbackScheduled.value) + 1);
+        } else {
+          playbackDropped.value = String(Number(playbackDropped.value) + 1);
+          if (Number(playbackDropped.value) === 1) {
+            console.warn("Audio playback rejected a PCM16 chunk", {
+              contextState: current.player.context?.state,
+              queuedSeconds: current.player.context
+                ? Math.max(0, current.player.nextStart - current.player.context.currentTime)
+                : null,
+            });
+          }
+        }
+      }
+      if (live) aiStatus.textContent = "AI speaking";
+    },
+    onEvent: (event) => {
+      if (session !== current) return;
+      if (event.type === "turn_end") {
+        if (live && !current.microphone && !current.microphoneStarting) {
+          // Gemini may finish sending its greeting before playback finishes.
+          // Do not begin uploading caller audio until the greeting is audible.
+          const waitSeconds = Math.max(0, current.player.nextStart - (current.player.context?.currentTime ?? 0));
+          aiStatus.textContent = "Finishing greeting…";
+          current.greetingTimer = setTimeout(() => {
+            if (session === current) void startMicrophone(current, socket);
+          }, waitSeconds * 1000);
+        } else {
+          aiStatus.textContent = "Listening";
+        }
+      }
+      if (event.type === "interrupted") {
+        interruptions.value = String(Number(interruptions.value) + 1);
+        current.player.clear();
+        aiStatus.textContent = "Model interrupted — microphone activity detected";
+      }
+    },
+    onDisconnect: (error) => {
+      if (session === current) void stopSession(error);
+    },
+  });
+  current.socket = socket;
+  session = current;
+
+  try {
+    // User-gesture activation is required by browser audio autoplay rules.
+    if (live) await current.player.enable();
+    if (session !== current) return;
+    await socket.connect();
+    if (session !== current) return;
+    socketStatus.textContent = "Connected";
+
     stopButton.disabled = false;
-    echo.disabled = false;
+    if (live) {
+      micStatus.textContent = "Waiting for assistant greeting…";
+      aiStatus.textContent = "Assistant greeting…";
+    } else {
+      await startMicrophone(current, socket);
+    }
   } catch (error) {
     if (session === current) await stopSession(error);
   }
@@ -125,7 +199,7 @@ startButton.addEventListener("click", async () => {
 stopButton.addEventListener("click", () => { void stopSession(); });
 
 echo.addEventListener("change", () => {
-  if (!session) return;
+  if (!session || session.live) return;
   if (echo.checked) {
     void session.player.enable().catch((error) => {
       echo.checked = false;

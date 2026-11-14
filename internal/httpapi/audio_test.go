@@ -15,7 +15,7 @@ import (
 
 func echoServer(t *testing.T, ctx context.Context) string {
 	t.Helper()
-	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}))
+	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, nil))
 	t.Cleanup(server.Close)
 	return "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/audio"
 }
@@ -29,7 +29,6 @@ func TestAudioEcho(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer conn.CloseNow()
-
 	chunk := make([]byte, 640)
 	for i := range chunk {
 		chunk[i] = byte(i)

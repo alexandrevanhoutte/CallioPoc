@@ -15,7 +15,7 @@ func TestRouter(t *testing.T) {
 	t.Parallel()
 
 	files := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<h1>CallioPoc</h1>")}}
-	router := httpapi.NewRouter(context.Background(), files)
+	router := httpapi.NewRouter(context.Background(), files, nil)
 
 	for _, tc := range []struct {
 		name   string
@@ -26,6 +26,7 @@ func TestRouter(t *testing.T) {
 	}{
 		{name: "health", method: http.MethodGet, path: "/health", status: http.StatusOK, body: "{\"status\":\"ok\"}"},
 		{name: "health method not allowed", method: http.MethodPost, path: "/health", status: http.StatusMethodNotAllowed},
+		{name: "live missing provider", method: http.MethodGet, path: "/ws/live", status: http.StatusServiceUnavailable},
 		{name: "test page", method: http.MethodGet, path: "/", status: http.StatusOK, body: "CallioPoc"},
 		{name: "missing page", method: http.MethodGet, path: "/missing", status: http.StatusNotFound},
 	} {
