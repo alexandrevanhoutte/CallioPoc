@@ -79,14 +79,18 @@ func (b *liveBridge) cancelFinishing(ctx context.Context) {
 }
 
 func (b *liveBridge) sendFinishing(ctx context.Context) error {
-	if b.lifecycle.State() != call.AIActive || !b.finishing.Load() {
+	b.finishMu.Lock()
+	if b.lifecycle.State() != call.AIActive || !b.finishing.Load() || b.finishSent.Load() {
+		b.finishMu.Unlock()
 		return nil
 	}
-	if !b.finishSent.CompareAndSwap(false, true) { return nil }
+	b.finishSent.Store(true)
+	reason := b.finishReason
+	b.finishMu.Unlock()
 	return b.writeJSON(ctx, struct {
 		Type string `json:"type"`
 		Reason string `json:"reason"`
-	}{Type: "call_finishing", Reason: b.finishReason})
+	}{Type: "call_finishing", Reason: reason})
 }
 
 // Watch real conversation events, not the stream of silent PCM frames.
