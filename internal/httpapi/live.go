@@ -151,6 +151,7 @@ func forwardModel(ctx context.Context, conn *websocket.Conn, session realtime.Vo
 			if err := conn.Write(ctx, websocket.MessageText, body); err != nil {
 				return err
 			}
+			slog.Info("handoff_required sent to browser", "reason", event.Handoff.Reason.String())
 		case realtime.EventTurnEnd, realtime.EventInterrupted:
 			if event.Type == realtime.EventInterrupted {
 				if event.TurnID > interruptedTurn {
