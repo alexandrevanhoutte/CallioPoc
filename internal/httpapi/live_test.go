@@ -1,6 +1,7 @@
 package httpapi_test
 
 import (
+	"encoding/json"
 	"bytes"
 	"context"
 	"net/http"
@@ -165,6 +166,59 @@ func TestInterruptedTurnDoesNotForwardStaleAudio(t *testing.T) {
 	}
 	if typ != websocket.MessageText || !bytes.Contains(payload, []byte(`"type":"turn_end"`)) {
 		t.Fatalf("expected completion of fresh turn, got kind=%d payload=%s", typ, payload)
+	}
+}
+
+func TestLiveTranscriptEvent(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := &fakeVoiceProvider{}
+	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	defer server.Close()
+
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+
+	// A microphone frame ensures the provider has been opened.
+	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 640)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	provider.mu.Lock()
+	s := provider.session
+	provider.mu.Unlock()
+
+	s.events <- realtime.Event{
+		Type: realtime.EventTranscript,
+		Transcript: &realtime.TranscriptSegment{
+			ID: "caller-1", Speaker: realtime.SpeakerCaller,
+			Text: "Bonjour", Final: true,
+			Timestamp: time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC),
+		},
+	}
+	kind, payload, err := conn.Read(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kind != websocket.MessageText {
+		t.Fatalf("expected transcript text event, got %d", kind)
+	}
+	var event struct {
+		Type string `json:"type"`
+		realtime.TranscriptSegment
+	}
+	if err := json.Unmarshal(payload, &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.Type != "transcript" || event.ID != "caller-1" ||
+		event.Speaker != realtime.SpeakerCaller || !event.Final ||
+		event.Text != "Bonjour" || event.Timestamp.IsZero() {
+		t.Fatalf("unexpected transcript event: %+v", event)
 	}
 }
 

@@ -47,7 +47,7 @@ To switch model, change `GEMINI_MODEL`. Future providers can implement `realtime
 
 The browser's AI status indicator is for local testing only, not the future telephone caller. The assistant greeting remains a separate initial content turn, while microphone capture starts immediately for full-duplex barge-in. The **500 ms** silence timeout may require adjustment if it interrupts natural pauses. Use headphones to avoid false barge-in caused by the model hearing its own output.
 
-The interface defines `EventType` as numeric `iota + 1` with `NewEventType(string)` and `String()`. CI-05 assigns local backend turn IDs, drops queued/stale audio for interrupted turns, forwards Gemini's `interrupted` notification, and immediately flushes browser playback. A late `turn_end` following interruption is ignored, and WebSocket/session reuse continues normally. CI-06 adds transcription.
+The interface defines `EventType` as numeric `iota + 1` with `NewEventType(string)` and `String()`. CI-05 assigns local backend turn IDs, drops queued/stale audio for interrupted turns, forwards Gemini's `interrupted` notification, and immediately flushes browser playback. A late `turn_end` following interruption is ignored, and WebSocket/session reuse continues normally. CI-06 adds Gemini input/output transcription events, per-speaker segments, and a live transcript panel.
 
 ### Troubleshooting: Gemini's voice is chopped or silent
 
@@ -69,6 +69,32 @@ Live audio interruptions and all-zero output chunks are separate from WebSocket 
 4. Watch **AI turn interruptions**. It should increase on confirmed Gemini interruptions, while **Chunks dropped (playback)** should normally remain at zero.
 
 The backend logs assistant turn starts/completions/interruptions with an internal `turn_id`. Binary audio frames remain compatible with CI-04; no JSON metadata is added to each chunk. Turn IDs are local diagnostics, not a guarantee that an external provider can identify every delayed audio frame. Browser playback tracking uses the real `AudioBufferSourceNode.onended` callback rather than assuming `turn_end` means all queued audio has finished playing.
+
+## CI-06 — Live transcript
+
+Gemini Live's `InputAudioTranscription` and `OutputAudioTranscription` are enabled on the existing voice session. Transcription is **best effort**: speech recognition and generation text can be delayed, revised or unavailable even when audio works.
+
+The backend forwards JSON WebSocket events alongside the existing binary PCM16 messages:
+
+```json
+{
+  "type": "transcript",
+  "segment_id": "caller-1",
+  "order": 2,
+  "speaker": "CALLER",
+  "text": "Bonjour, je voudrais parler à Alexandre.",
+  "final": true,
+  "timestamp": "2026-11-14T12:00:00Z"
+}
+```
+
+`AI` is the other supported speaker. Events with the same `segment_id` replace earlier provisional text. A `final: true` segment is immutable. A final segment is immutable once emitted. Output transcription may finalize on the AI generation boundary when Gemini omits `Finished`; caller transcription is handled independently. Input/output transcript timestamps may not align with audio.
+
+The `realtime.Transcript` collector exposes `Snapshot()` and `Finalized()` for CI-09/CI-10. The browser keeps transcript state in memory and retains it after Stop until the next conversation or page reload. **No file or database persistence** is added in CI-06. Unfinished interrupted AI speech is displayed as provisional and excluded from finalized snapshots.
+
+Manual check: begin a Gemini Live conversation, confirm the greeting appears as Callio and spoken French appears as Caller; interrupt Callio, speak again, click Stop, and verify there are no duplicated lines and no transcript data in the filesystem.
+
+Gemini does not always set `Transcription.Finished`. Output transcription is finalized on `GenerationComplete` (or `TurnComplete` as a fallback); input transcription is independently timed and is finalized on `Finished` or the end of the related completed model turn when available. Gemini transcription text is assembled as **incremental deltas**, so repeated words are preserved. A reserved `order` lets delayed caller text appear before the subsequent assistant turn, even when the associated JSON message arrives later. No content-based deduplication is attempted. Interrupted assistant speech remains provisional. This ordering is best-effort: Gemini does not give a universal utterance ID for correlating arbitrarily late or overlapping caller input, and recognition can be inaccurate.
 
 ## Validation commands
 

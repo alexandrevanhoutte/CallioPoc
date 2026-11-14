@@ -113,7 +113,24 @@ func forwardModel(ctx context.Context, conn *websocket.Conn, session realtime.Vo
 			if err := conn.Write(ctx, websocket.MessageBinary, event.Audio); err != nil {
 				return err
 			}
-		case realtime.EventTranscript, realtime.EventTurnEnd, realtime.EventInterrupted:
+		case realtime.EventTranscript:
+			if event.Transcript == nil {
+				continue
+			}
+			body, err := json.Marshal(struct {
+				Type string `json:"type"`
+				*realtime.TranscriptSegment
+			}{
+				Type: event.Type.String(),
+				TranscriptSegment: event.Transcript,
+			})
+			if err != nil {
+				return err
+			}
+			if err := conn.Write(ctx, websocket.MessageText, body); err != nil {
+				return err
+			}
+		case realtime.EventTurnEnd, realtime.EventInterrupted:
 			if event.Type == realtime.EventInterrupted {
 				if event.TurnID > interruptedTurn {
 					interruptedTurn = event.TurnID

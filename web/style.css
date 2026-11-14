@@ -55,3 +55,22 @@ progress {
   gap: 1rem;
   flex-wrap: wrap;
 }
+
+.transcript-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-height: 24rem;
+  overflow-y: auto;
+}
+
+.transcript-segment {
+  padding: 0.75rem;
+  border-radius: 0.6rem;
+  background: #f4f6f9;
+  overflow-wrap: anywhere;
+}
+
+.transcript-segment strong { font-size: 0.85rem; }
+.transcript-segment p { margin: 0.4rem 0 0; }
+.transcript-partial { opacity: 0.65; }
