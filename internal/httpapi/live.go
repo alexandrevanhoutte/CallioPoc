@@ -137,7 +137,7 @@ func forwardModel(ctx context.Context, bridge *liveBridge) error {
 				return err
 			}
 		case realtime.EventCallEndRequested:
-			bridge.beginFinishing(ctx, "caller_finished")
+			bridge.beginFinishing(ctx, call.EndCallerFinished)
 		case realtime.EventHandoffRequired:
 			if event.Handoff == nil {
 				return errors.New("missing handoff request")
