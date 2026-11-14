@@ -11,54 +11,23 @@ import (
 	"google.golang.org/genai"
 )
 
-const (
-	inputChunkBytes = 640 // PCM16 mono 16 kHz, 20 ms
-
-	frenchInstructions = "Tu es Callio, un assistant IA qui décroche les appels entrants pour son correspondant. " +
-		"Parle uniquement en français, avec un ton naturel et chaleureux. " +
-		"Chaque intervention doit contenir une ou deux phrases courtes, idéalement 20 mots au total. " +
-		"Pose au maximum une question à la fois. Pas de listes, de longs préambules ni d'explications non demandées. " +
-		"Après l'accueil, écoute l'appelant et cherche simplement à comprendre l'objet de l'appel. " +
-		"Tu es le standard téléphonique du correspondant : tu ne vends, n'achètes et n'acceptes rien en son nom. " +
-		"Si la demande est vague ou sans lien clair avec lui (par exemple « je souhaite vendre des chaussures »), " +
-		"demande d'abord ce que l'appelant attend précisément du correspondant, avant de recueillir son nom. " +
-		"Reformule sans promettre d'action : ne dis jamais « c'est noté », « demande enregistrée » " +
-		"ou « je transmets » tant que request_handoff n'a pas confirmé la demande. " +
-		"Ne prétends pas être humain et n'invente jamais de transfert, de rendez-vous ou d'action effectuée. " +
-		"Si l'appelant souhaite parler au propriétaire, ou si tu ne peux pas traiter une demande importante, " +
-		"ne déclenche pas immédiatement le transfert : recueille d'abord les informations utiles. " +
-		"Demande une fois le nom de l'appelant s'il ne l'a pas déjà donné. Un refus ou une absence de réponse " +
-		"ne doit pas bloquer la demande : laisse caller_name absent dans ce cas. " +
-		"Vérifie que tu connais le motif précis de l'appel ; s'il est vague, pose une question courte " +
-		"pour le clarifier. Ne repose pas de questions dont tu connais déjà la réponse. " +
-		"Tu peux demander l'entreprise pour un recrutement, mais email et téléphone restent facultatifs. " +
-		"Ne demande jamais toutes les coordonnées systématiquement et n'invente aucune information. " +
-		"Quand tu as tenté de demander le nom et que le motif est suffisamment clair, appelle obligatoirement " +
-		"request_handoff avec le motif et un résumé fidèle, AVANT d'annoncer que la demande est notée. " +
-		"Une annonce orale ne remplace jamais l'appel de l'outil. " +
-		"Après confirmation par l'outil, indique seulement que la demande a été enregistrée ; " +
-		"ne prétends pas avoir transféré l'appel ni connaître la disponibilité du propriétaire. " +
-		"Si l'appelant souhaite raccrocher, respecte ce choix même si son nom ou son motif restent inconnus. " +
-		"Quand l'appelant indique clairement que tout est terminé ou dit au revoir, réponds une seule fois brièvement, " +
-		"puis appelle obligatoirement request_call_end. Ne continue pas les échanges de politesses. " +
-		"Ne termine jamais l'appel s'il reste une question ouverte ou une demande de transfert en attente."
-
-	openingPrompt = "Un nouvel appel entrant vient d'être décroché. " +
-		"Accueille immédiatement l'appelant à voix haute, en une seule phrase, " +
-		"en te présentant comme assistant IA et en lui demandant le motif de son appel."
-)
+const inputChunkBytes = 640 // PCM16 mono 16 kHz, 20 ms
 
 type Provider struct {
 	client *genai.Client
 	model  string
+	locale realtime.Locale
 }
 
-func New(ctx context.Context, apiKey, model string) (*Provider, error) {
+func New(ctx context.Context, apiKey, model string, locale realtime.Locale) (*Provider, error) {
 	if apiKey == "" {
 		return nil, errors.New("GEMINI_API_KEY is missing")
 	}
 	if model == "" {
 		return nil, errors.New("GEMINI_MODEL is missing")
+	}
+	if _, err := realtime.NewLocale(locale.String()); err != nil {
+		return nil, err
 	}
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  apiKey,
@@ -67,7 +36,7 @@ func New(ctx context.Context, apiKey, model string) (*Provider, error) {
 	if err != nil {
 		return nil, fmt.Errorf("initialize Gemini client: %w", err)
 	}
-	return &Provider{client: client, model: model}, nil
+	return &Provider{client: client, model: model, locale: locale}, nil
 }
 
 func (p *Provider) Open(ctx context.Context) (realtime.VoiceSession, error) {
@@ -84,7 +53,7 @@ func (p *Provider) Open(ctx context.Context) (realtime.VoiceSession, error) {
 	if err := live.SendClientContent(genai.LiveClientContentInput{
 		Turns: []*genai.Content{{
 			Role:  "user",
-			Parts: []*genai.Part{{Text: openingPrompt}},
+			Parts: []*genai.Part{{Text: realtime.OpeningPrompt(p.locale)}},
 		}},
 	}); err != nil {
 		_ = live.Close()
@@ -104,7 +73,7 @@ func liveConfig() *genai.LiveConnectConfig {
 		OutputAudioTranscription: &genai.AudioTranscriptionConfig{},
 		Tools: geminiTools(),
 		SystemInstruction: &genai.Content{
-			Parts: []*genai.Part{{Text: frenchInstructions}},
+			Parts: []*genai.Part{{Text: realtime.ReceptionistInstructions}},
 		},
 		RealtimeInputConfig: &genai.RealtimeInputConfig{
 			AutomaticActivityDetection: &genai.AutomaticActivityDetection{
@@ -232,17 +201,10 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 
 func (s *session) NotifyHandoffOutcome(ctx context.Context, outcome string) error {
 	if err := ctx.Err(); err != nil { return err }
-	var instruction string
-	switch outcome {
-	case "decline":
-		instruction = "Information interne : le propriétaire a refusé la prise en main simulée. "
-	case "no_answer":
-		instruction = "Information interne : le propriétaire ne répond pas à la demande de prise en main simulée. "
-	default:
-		return fmt.Errorf("unsupported handoff outcome: %q", outcome)
+	instruction, err := realtime.HandoffOutcomePrompt(outcome)
+	if err != nil {
+		return err
 	}
-	instruction += "Explique brièvement à l'appelant que le propriétaire n'est pas disponible et propose de prendre un message. " +
-		"Ne laisse pas croire que l'appel a été réellement transféré."
 	if err := s.live.SendClientContent(genai.LiveClientContentInput{
 		Turns: []*genai.Content{{
 			Role: "user",

@@ -1,6 +1,6 @@
 # CallioPoc
 
-Local, single-user AI receptionist POC. The browser streams PCM16 microphone audio over WebSocket to Go. CI-04 integrates **Gemini Live** in French, while keeping the original audio echo test mode.
+Local, single-user AI receptionist POC. The browser streams PCM16 microphone audio over WebSocket to Go. CI-04 integrates **Gemini Live** with a configurable greeting, while keeping the original audio echo test mode.
 
 ## Requirements
 
@@ -31,6 +31,7 @@ Open <http://localhost:8080>. The server binds to loopback only; localhost is a 
 | `AI_PROVIDER` | `gemini` | Provider; only Gemini implemented |
 | `GEMINI_API_KEY` | empty | Secret, server-side only |
 | `GEMINI_MODEL` | `gemini-3.8-live` | Live conversation model |
+| `CALL_GREETING_LOCALE` | `fr-FR` if unset | First greeting only: `fr-FR`, `en-US`, or `ko-KR` (`.env.example` uses `ko-KR`) |
 
 To switch model, change `GEMINI_MODEL`. Future providers can implement `realtime.VoiceProvider` and `realtime.VoiceSession` without changing transport handlers.
 
@@ -38,7 +39,7 @@ To switch model, change `GEMINI_MODEL`. Future providers can implement `realtime
 
 1. Select **Echo** for the CI-03 loopback audio test (no API key needed).
 2. Select **Gemini Live** and click **Start conversation**. Grant microphone permission immediately: the assistant still speaks **first**, but you can interrupt its greeting while it is talking.
-3. Speak French during or after the greeting. Gemini uses **500 ms** of detected silence to end your turn; responses are instructed to stay within one or two short French sentences. The **Chunks sent** counter increases after microphone access; **Chunks received** counts output chunks.
+3. Speak French, Korean or English during or after the greeting, including switching mid-call. Gemini uses **500 ms** of detected silence to end your turn; responses are instructed to stay within one or two short sentences in the caller's current language. The **Chunks sent** counter increases after microphone access; **Chunks received** counts output chunks.
 4. Wear headphones to avoid sound feedback. Gemini audio playback is enabled on the user click; Echo playback remains an optional toggle.
 5. Click **Stop**, then repeat. Verify microphone tracks, WebSocket and Gemini session all close.
 6. Stop the backend during a session; it should release provider/browser resources.
@@ -157,3 +158,11 @@ Review the manual goodbye, silence, interruption, handoff and repeated-call
 scenarios before merging.
 
 Tests: `go test ./...` and `node --test tests/*.test.mjs`.
+
+## CI-12 — Multilingual receptionist
+
+Model-facing instructions and tool descriptions are in English. Set `CALL_GREETING_LOCALE` in `.env` to `fr-FR`, `en-US`, or `ko-KR`; invalid values fail startup. If unset, the default is `fr-FR` for compatibility. The supplied `.env.example` uses `ko-KR` for Korea-based testing.
+
+The selected locale changes **only the initial spoken greeting**. Afterwards Callio is instructed to match the caller's actual spoken language, including switching Korean → English → French without reconnecting or translating unsolicited. Restart the Go process and start a new call after changing `.env`. Prompts are provider-neutral and defined in `internal/realtime/prompt.go`. No frontend selector or language-detection service is introduced.
+
+Manual test: start with `ko-KR` and listen for the Korean greeting; reply in English, then French, and verify that each response follows your language. Also test `request_handoff`, `request_call_end` and Echo. Live language switching is model-dependent and requires manual validation.

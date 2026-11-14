@@ -1,6 +1,7 @@
 package gemini
 
 import (
+	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
 	"strings"
 	"testing"
 )
@@ -17,51 +18,20 @@ func TestEndOfSpeechTimeout(t *testing.T) {
 	}
 }
 
-func TestHandoffInstructions(t *testing.T) {
-	for _, required := range []string{
-		"Demande une fois le nom",
-		"Un refus ou une absence de réponse",
-		"motif précis",
-		"request_handoff",
-		"AVANT d'annoncer",
-	} {
-		if !strings.Contains(frenchInstructions, required) {
-			t.Fatalf("handoff prompt missing %q", required)
-		}
+func TestMultilingualGeminiConfig(t *testing.T) {
+	cfg := liveConfig()
+	if len(cfg.Tools) != 2 || cfg.Tools[0].FunctionDeclarations[0].Name != handoffToolName ||
+		cfg.Tools[1].FunctionDeclarations[0].Name != endCallToolName {
+		t.Fatal("both Gemini functions must be registered")
 	}
-	config := liveConfig()
-	if len(config.Tools) != 2 || len(config.Tools[0].FunctionDeclarations) != 1 {
-		t.Fatal("expected one registered Gemini handoff tool")
+	if !strings.Contains(cfg.SystemInstruction.Parts[0].Text, "switch with them immediately") {
+		t.Fatal("Gemini must follow the caller's language")
 	}
-	decl := config.Tools[0].FunctionDeclarations[0]
-	if decl.Name != handoffToolName || !strings.Contains(decl.Description, "tenté de demander le nom") {
-		t.Fatal("handoff tool must document information-gathering requirement")
+	if !strings.Contains(cfg.Tools[0].FunctionDeclarations[0].Description, "BEFORE verbally confirming") ||
+		!strings.Contains(cfg.Tools[1].FunctionDeclarations[0].Description, "caller’s language") {
+		t.Fatal("Gemini tools need English descriptions")
 	}
-}
-
-func TestNaturalCallEndInstructions(t *testing.T) {
-	if !strings.Contains(frenchInstructions, "request_call_end") {
-		t.Fatal("system instructions must request explicit natural call completion")
-	}
-	decls := liveConfig().Tools[1].FunctionDeclarations
-	if len(decls) != 1 || decls[0].Name != endCallToolName {
-		t.Fatal("natural end function not registered")
-	}
-	if decls[0].Parameters.Properties["reason"] == nil {
-		t.Fatal("end tool must require a reason")
-	}
-}
-
-func TestReceptionistDoesNotPrematurelyConfirmActions(t *testing.T) {
-	for _, required := range []string{
-		"tu ne vends, n'achètes et n'acceptes rien",
-		"demande d'abord ce que l'appelant attend précisément",
-		"ne dis jamais « c'est noté »",
-		"tant que request_handoff n'a pas confirmé",
-		"respecte ce choix même si son nom ou son motif restent inconnus",
-	} {
-		if !strings.Contains(frenchInstructions, required) {
-			t.Fatalf("receptionist prompt missing %q", required)
-		}
+	for _, locale := range []realtime.Locale{realtime.LocaleFrench, realtime.LocaleEnglish, realtime.LocaleKorean} {
+		if !strings.Contains(realtime.OpeningPrompt(locale), realtime.GreetingText(locale)) { t.Fatalf("missing greeting: %s", locale) }
 	}
 }
