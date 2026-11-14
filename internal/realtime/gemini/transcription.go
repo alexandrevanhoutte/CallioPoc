@@ -52,6 +52,22 @@ func (s *transcriptionState) update(speaker realtime.Speaker, value *genai.Trans
 	return realtime.Event{Type: realtime.EventTranscript, Transcript: &segment}, true
 }
 
+// finish closes the current utterance when Gemini omits Transcription.Finished.
+// The same segment ID is emitted with Final=true, so the UI updates its row.
+func (s *transcriptionState) finish(speaker realtime.Speaker) (realtime.Event, bool) {
+	stream := &s.caller
+	if speaker == realtime.SpeakerAI {
+		stream = &s.ai
+	}
+	if stream.current == nil {
+		return realtime.Event{}, false
+	}
+	segment := *stream.current
+	segment.Final = true
+	stream.current = nil
+	return realtime.Event{Type: realtime.EventTranscript, Transcript: &segment}, true
+}
+
 func (s *transcriptionState) interruptAI() {
 	// Interrupted assistant utterances should not be finalized automatically.
 	s.ai.current = nil

@@ -45,17 +45,19 @@ func (t *turnState) process(content *genai.LiveServerContent) error {
 		t.active = false
 		t.transcripts.interruptAI()
 	}
-	for _, item := range []struct {
-		speaker realtime.Speaker
-		value   *genai.Transcription
-	}{
-		{realtime.SpeakerCaller, content.InputTranscription},
-		{realtime.SpeakerAI, content.OutputTranscription},
-	} {
-		if event, ok := t.transcripts.update(item.speaker, item.value); ok {
-			t.history.Apply(*event.Transcript)
-			t.pending = append(t.pending, event)
+	// Input/output transcription is sent as text fragments; the SDK's
+	// Finished flag is often absent. Treat the first assistant text fragment
+	// as a boundary for the caller's previous utterance.
+	if event, ok := t.transcripts.update(realtime.SpeakerCaller, content.InputTranscription); ok {
+		t.appendTranscript(event)
+	}
+	if content.OutputTranscription != nil && content.OutputTranscription.Text != "" {
+		if event, ok := t.transcripts.finish(realtime.SpeakerCaller); ok {
+			t.appendTranscript(event)
 		}
+	}
+	if event, ok := t.transcripts.update(realtime.SpeakerAI, content.OutputTranscription); ok {
+		t.appendTranscript(event)
 	}
 	if content.Interrupted {
 		return nil
@@ -86,6 +88,18 @@ func (t *turnState) process(content *genai.LiveServerContent) error {
 		}
 	}
 
+	// Gemini may never set Transcription.Finished. GenerationComplete is
+	// the assistant's speech boundary; TurnComplete is a fallback. Input and
+	// output transcription can arrive independently of audio packets.
+	if content.GenerationComplete || content.TurnComplete {
+		if event, ok := t.transcripts.finish(realtime.SpeakerCaller); ok {
+			t.appendTranscript(event)
+		}
+		if event, ok := t.transcripts.finish(realtime.SpeakerAI); ok {
+			t.appendTranscript(event)
+		}
+	}
+
 	if content.TurnComplete && t.active {
 		t.pending = append(t.pending, realtime.Event{
 			Type:   realtime.EventTurnEnd,
@@ -94,4 +108,9 @@ func (t *turnState) process(content *genai.LiveServerContent) error {
 		t.active = false
 	}
 	return nil
+}
+
+func (t *turnState) appendTranscript(event realtime.Event) {
+	t.history.Apply(*event.Transcript)
+	t.pending = append(t.pending, event)
 }

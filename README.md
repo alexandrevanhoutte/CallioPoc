@@ -93,6 +93,8 @@ The `realtime.Transcript` collector exposes `Snapshot()` and `Finalized()` for C
 
 Manual check: begin a Gemini Live conversation, confirm the greeting appears as Callio and spoken French appears as Caller; interrupt Callio, speak again, click Stop, and verify there are no duplicated lines and no transcript data in the filesystem.
 
+Gemini does not always set `Transcription.Finished` on individual updates. Segment boundaries therefore also use assistant response completion and the next speaker's transcription. This keeps separate caller/assistant turns in separate rows rather than merging all speech from the same speaker. Real-time transcript timestamps remain best-effort because transcription events may arrive asynchronously.
+
 ## Validation commands
 
 ```bash

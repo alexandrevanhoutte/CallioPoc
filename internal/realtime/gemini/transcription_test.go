@@ -46,3 +46,22 @@ func TestTranscriptionInterrupt(t *testing.T) {
 		t.Fatal("interruption must start a new assistant segment")
 	}
 }
+
+func TestTranscriptionFinishWithoutGeminiFinishedFlag(t *testing.T) {
+	var s transcriptionState
+	first, ok := s.update(realtime.SpeakerAI, &genai.Transcription{Text: "Bonjour"})
+	if !ok || first.Transcript.Final {
+		t.Fatal("expected provisional assistant transcription")
+	}
+	last, ok := s.finish(realtime.SpeakerAI)
+	if !ok || last.Transcript.ID != first.Transcript.ID || !last.Transcript.Final {
+		t.Fatal("finish should close the existing segment, not create a new one")
+	}
+	if _, ok := s.finish(realtime.SpeakerAI); ok {
+		t.Fatal("already closed segment should not be emitted twice")
+	}
+	newSegment, ok := s.update(realtime.SpeakerAI, &genai.Transcription{Text: "Comment allez-vous ?"})
+	if !ok || newSegment.Transcript.ID == first.Transcript.ID {
+		t.Fatal("new assistant response must have a fresh segment ID")
+	}
+}

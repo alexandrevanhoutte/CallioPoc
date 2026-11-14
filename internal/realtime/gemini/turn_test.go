@@ -80,3 +80,45 @@ func TestTurnState(t *testing.T) {
 		}
 	})
 }
+
+func TestAlternatingTranscriptsWithoutFinishedFlag(t *testing.T) {
+	var state turnState
+
+	// Gemini may omit Finished on every transcription update. Each
+	// complete assistant turn must still get a different segment ID.
+	messages := []*genai.LiveServerContent{
+		{OutputTranscription: &genai.Transcription{Text: "Bonjour."}},
+		{TurnComplete: true},
+		{InputTranscription: &genai.Transcription{Text: "Je voudrais"}},
+		{InputTranscription: &genai.Transcription{Text: " un entretien."}},
+		{OutputTranscription: &genai.Transcription{Text: "Avec qui ?"}},
+		{TurnComplete: true},
+		{InputTranscription: &genai.Transcription{Text: "Alexandre."}},
+		{OutputTranscription: &genai.Transcription{Text: "Je vous remercie."}},
+		{TurnComplete: true},
+	}
+	for _, message := range messages {
+		if err := state.process(message); err != nil {
+			t.Fatal(err)
+		}
+	}
+	wantSpeakers := []realtime.Speaker{
+		realtime.SpeakerAI, realtime.SpeakerCaller,
+		realtime.SpeakerAI, realtime.SpeakerCaller, realtime.SpeakerAI,
+	}
+	got := state.history.Finalized()
+	if len(got) != len(wantSpeakers) {
+		t.Fatalf("expected %d alternating transcript bubbles, got %d: %+v", len(wantSpeakers), len(got), got)
+	}
+	for i, speaker := range wantSpeakers {
+		if got[i].Speaker != speaker {
+			t.Fatalf("bubble %d: got %s, want %s", i, got[i].Speaker, speaker)
+		}
+		if i > 0 && got[i].ID == got[i-1].ID {
+			t.Fatalf("bubbles %d and %d share an ID", i-1, i)
+		}
+	}
+	if got[1].Text != "Je voudrais un entretien." {
+		t.Fatalf("caller chunks not combined properly: %q", got[1].Text)
+	}
+}
