@@ -1,9 +1,9 @@
-package httpapi_test
+package httpapi
 
 import (
-	"encoding/json"
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,7 +12,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/alexandrevanhoutte/CallioPoc/internal/httpapi"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/call"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
 	"github.com/coder/websocket"
 )
@@ -75,7 +75,7 @@ func TestLiveBridge(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
 	defer server.Close()
 
 	uri := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/live"
@@ -118,7 +118,7 @@ func TestInterruptedTurnDoesNotForwardStaleAudio(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
 	defer server.Close()
 
 	uri := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/live"
@@ -173,7 +173,7 @@ func TestLiveTranscriptEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
 	defer server.Close()
 
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
@@ -223,7 +223,7 @@ func TestLiveTranscriptEvent(t *testing.T) {
 }
 
 func TestLiveWithoutProvider(t *testing.T) {
-	server := httptest.NewServer(httpapi.NewRouter(context.Background(), fstest.MapFS{}, nil))
+	server := httptest.NewServer(NewRouter(context.Background(), fstest.MapFS{}, nil))
 	defer server.Close()
 	response, err := http.Get(server.URL + "/ws/live")
 	if err != nil {
@@ -239,7 +239,7 @@ func TestLiveHandoffEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
 	defer server.Close()
 
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
@@ -307,7 +307,7 @@ func TestLiveLifecycleControl(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			provider := &fakeVoiceProvider{}
-			server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+			server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
 			defer server.Close()
 			conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
 			if err != nil { t.Fatal(err) }
@@ -379,7 +379,7 @@ func TestInvalidLifecycleCommandDoesNotChangeState(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, provider))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
 	defer server.Close()
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
 	if err != nil { t.Fatal(err) }
@@ -397,5 +397,217 @@ func TestInvalidLifecycleCommandDoesNotChangeState(t *testing.T) {
 	_, body, err := conn.Read(ctx)
 	if err != nil || !bytes.Contains(body, []byte(`"state":"completed"`)) {
 		t.Fatalf("expected completion after errors, payload=%s err=%v", body, err)
+	}
+}
+
+func TestLiveNaturalCompletionWaitsForPlayback(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := &fakeVoiceProvider{}
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
+	defer server.Close()
+
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+	if err != nil { t.Fatal(err) }
+	defer conn.CloseNow()
+
+	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 640)); err != nil { t.Fatal(err) }
+	if kind, _, err := conn.Read(ctx); err != nil || kind != websocket.MessageBinary {
+		t.Fatalf("expected initial audio, kind=%v err=%v", kind, err)
+	}
+	provider.mu.Lock()
+	s := provider.session
+	provider.mu.Unlock()
+
+	// The tool request must not immediately disconnect or discard final audio.
+	s.events <- realtime.Event{Type: realtime.EventCallEndRequested}
+	s.events <- realtime.Event{Type: realtime.EventAudio, TurnID: 2, Audio: make([]byte, 960), SampleRate: 24000}
+	s.events <- realtime.Event{Type: realtime.EventTurnEnd, TurnID: 2}
+
+	kind, _, err := conn.Read(ctx)
+	if err != nil { t.Fatal(err) }
+	if kind != websocket.MessageBinary { t.Fatalf("farewell audio was discarded: %v", kind) }
+	kind, payload, err := conn.Read(ctx)
+	if err != nil { t.Fatal(err) }
+	if kind != websocket.MessageText || !bytes.Contains(payload, []byte(`"type":"turn_end"`)) {
+		t.Fatalf("expected turn end before finish signal, got %s", payload)
+	}
+	kind, payload, err = conn.Read(ctx)
+	if err != nil { t.Fatal(err) }
+	if kind != websocket.MessageText || !bytes.Contains(payload, []byte(`"type":"call_finishing"`)) {
+		t.Fatalf("expected finishing event, got %s", payload)
+	}
+	select {
+	case <-s.closed: t.Fatal("provider closed before browser confirmed playback")
+	default:
+	}
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"playback_finished"}`)); err != nil { t.Fatal(err) }
+	kind, payload, err = conn.Read(ctx)
+	if err != nil { t.Fatal(err) }
+	if kind != websocket.MessageText || !bytes.Contains(payload, []byte(`"state":"completed"`)) ||
+		!bytes.Contains(payload, []byte(`"outcome":"caller_finished"`)) {
+		t.Fatalf("expected completed state after playback, got %s", payload)
+	}
+	select {
+	case <-s.closed:
+	case <-time.After(time.Second): t.Fatal("Gemini not closed after completion")
+	}
+}
+
+func TestPlaybackAcknowledgementRequiresFinishing(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := &fakeVoiceProvider{}
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
+	defer server.Close()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+	if err != nil { t.Fatal(err) }
+	defer conn.CloseNow()
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"playback_finished"}`)); err != nil { t.Fatal(err) }
+	kind, payload, err := conn.Read(ctx)
+	if err != nil { t.Fatal(err) }
+	if kind != websocket.MessageText || !bytes.Contains(payload, []byte(`"type":"call_error"`)) {
+		t.Fatalf("expected rejected premature playback ack, got %s", payload)
+	}
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"end_call"}`)); err != nil { t.Fatal(err) }
+	_, payload, err = conn.Read(ctx)
+	if err != nil || !bytes.Contains(payload, []byte(`"state":"completed"`)) {
+		t.Fatalf("manual completion failed: %s (%v)", payload, err)
+	}
+}
+
+func TestIdleExpired(t *testing.T) {
+	now := time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct{
+		name string
+		last time.Time
+		state call.State
+		speaking bool
+		want bool
+	}{
+		{"silent for 61 seconds", now.Add(-61*time.Second), call.AIActive, false, true},
+		{"recent speech", now.Add(-20*time.Second), call.AIActive, false, false},
+		{"AI still speaking", now.Add(-70*time.Second), call.AIActive, true, false},
+		{"handoff pending", now.Add(-70*time.Second), call.HandoffRequired, false, false},
+		{"human active", now.Add(-70*time.Second), call.HumanActive, false, false},
+		{"completed", now.Add(-70*time.Second), call.Completed, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := idleExpired(now, tc.last, time.Minute, tc.state, tc.speaking); got != tc.want {
+				t.Fatalf("idleExpired()=%t want %t", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestConfiguredIdleTimeout(t *testing.T) {
+	t.Setenv("CALL_IDLE_TIMEOUT_SECONDS", "90")
+	if got := configuredIdleTimeout(); got != 90*time.Second { t.Fatalf("got %s", got) }
+	t.Setenv("CALL_IDLE_TIMEOUT_SECONDS", "1")
+	if got := configuredIdleTimeout(); got != defaultIdleTimeout { t.Fatalf("invalid timeout got %s", got) }
+}
+
+
+func TestLiveFarewellInterruptionAllowsAnotherEnd(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := &fakeVoiceProvider{}
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
+	defer server.Close()
+
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+
+	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 640)); err != nil {
+		t.Fatal(err)
+	}
+	if kind, _, err := conn.Read(ctx); err != nil || kind != websocket.MessageBinary {
+		t.Fatalf("expected initial audio: kind=%v, err=%v", kind, err)
+	}
+	provider.mu.Lock()
+	voice := provider.session
+	provider.mu.Unlock()
+
+	voice.events <- realtime.Event{Type: realtime.EventCallEndRequested}
+	voice.events <- realtime.Event{Type: realtime.EventInterrupted, TurnID: 1}
+
+	for _, kind := range []string{"call_end_cancelled", "interrupted"} {
+		typ, body, err := conn.Read(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var event struct {
+			Type string `json:"type"`
+		}
+		if typ != websocket.MessageText || json.Unmarshal(body, &event) != nil || event.Type != kind {
+			t.Fatalf("expected %s, got %s", kind, body)
+		}
+	}
+	// The cancelled farewell must not prevent a subsequent request.
+	voice.events <- realtime.Event{Type: realtime.EventCallEndRequested}
+	voice.events <- realtime.Event{Type: realtime.EventTurnEnd, TurnID: 2}
+
+	for _, kind := range []string{"turn_end", "call_finishing"} {
+		typ, body, err := conn.Read(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var event struct {
+			Type string `json:"type"`
+		}
+		if typ != websocket.MessageText || json.Unmarshal(body, &event) != nil || event.Type != kind {
+			t.Fatalf("expected %s, got %s", kind, body)
+		}
+	}
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"playback_finished"}`)); err != nil {
+		t.Fatal(err)
+	}
+	_, body, err := conn.Read(ctx)
+	if err != nil || !bytes.Contains(body, []byte(`"state":"completed"`)) {
+		t.Fatalf("expected completed state, payload=%s err=%v", body, err)
+	}
+}
+
+func TestLiveSessionRejectsDuplicateCompletionRequests(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := &fakeVoiceProvider{}
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider))
+	defer server.Close()
+
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.CloseNow()
+
+	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 640)); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := conn.Read(ctx); err != nil {
+		t.Fatal(err)
+	}
+	provider.mu.Lock()
+	voice := provider.session
+	provider.mu.Unlock()
+
+	voice.events <- realtime.Event{Type: realtime.EventCallEndRequested}
+	voice.events <- realtime.Event{Type: realtime.EventCallEndRequested}
+	voice.events <- realtime.Event{Type: realtime.EventTurnEnd, TurnID: 1}
+	for _, kind := range []string{"turn_end", "call_finishing"} {
+		_, body, err := conn.Read(ctx)
+		if err != nil || !bytes.Contains(body, []byte(`"type":"`+kind+`"`)) {
+			t.Fatalf("expected %s, body=%s err=%v", kind, body, err)
+		}
+	}
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"playback_finished"}`)); err != nil {
+		t.Fatal(err)
+	}
+	_, body, err := conn.Read(ctx)
+	if err != nil || !bytes.Contains(body, []byte(`"state":"completed"`)) {
+		t.Fatalf("expected completed state, payload=%s err=%v", body, err)
 	}
 }

@@ -1,17 +1,63 @@
 package realtime
 
 import (
+	"encoding/json"
+	"fmt"
 	"sort"
 	"time"
 )
 
 // Speaker is intentionally provider-independent.
-type Speaker string
+// Zero is invalid, so an uninitialized speaker cannot represent a caller.
+type Speaker uint8
 
 const (
-	SpeakerCaller Speaker = "CALLER"
-	SpeakerAI     Speaker = "AI"
+	SpeakerCaller Speaker = iota + 1
+	SpeakerAI
 )
+
+func NewSpeaker(value string) (Speaker, error) {
+	switch value {
+	case "CALLER":
+		return SpeakerCaller, nil
+	case "AI":
+		return SpeakerAI, nil
+	default:
+		return 0, fmt.Errorf("invalid speaker: %q", value)
+	}
+}
+
+func (s Speaker) String() string {
+	switch s {
+	case SpeakerCaller:
+		return "CALLER"
+	case SpeakerAI:
+		return "AI"
+	default:
+		return "unknown"
+	}
+}
+
+// Keep the existing JSON protocol stable despite the internal numeric enum.
+func (s Speaker) MarshalJSON() ([]byte, error) {
+	if s != SpeakerCaller && s != SpeakerAI {
+		return nil, fmt.Errorf("cannot marshal invalid speaker %d", s)
+	}
+	return json.Marshal(s.String())
+}
+
+func (s *Speaker) UnmarshalJSON(data []byte) error {
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return fmt.Errorf("decode speaker: %w", err)
+	}
+	parsed, err := NewSpeaker(value)
+	if err != nil {
+		return err
+	}
+	*s = parsed
+	return nil
+}
 
 // TranscriptSegment is a full snapshot of a single utterance. Updates with
 // the same ID replace the previous partial text rather than duplicating it.
