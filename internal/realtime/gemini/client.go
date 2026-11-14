@@ -19,7 +19,11 @@ const (
 		"Chaque intervention doit contenir une ou deux phrases courtes, idéalement 20 mots au total. " +
 		"Pose au maximum une question à la fois. Pas de listes, de longs préambules ni d'explications non demandées. " +
 		"Après l'accueil, écoute l'appelant et cherche simplement à comprendre l'objet de l'appel. " +
-		"Ne prétends pas être humain et n'invente jamais de transfert, de rendez-vous ou d'action effectuée."
+		"Ne prétends pas être humain et n'invente jamais de transfert, de rendez-vous ou d'action effectuée. " +
+		"Si l'appelant veut parler au propriétaire, ou si tu ne peux pas traiter une demande importante, " +
+		"demande poliment son nom et le motif, puis appelle request_handoff avec un résumé factuel. " +
+		"Le nom, l'entreprise, l'email et le téléphone sont facultatifs ; ne les invente jamais. " +
+		"Après l'appel de cet outil, informe simplement l'appelant que la demande a été notée, sans promettre un transfert immédiat."
 
 	openingPrompt = "Un nouvel appel entrant vient d'être décroché. " +
 		"Accueille immédiatement l'appelant à voix haute, en une seule phrase, " +
