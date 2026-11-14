@@ -45,6 +45,7 @@ type liveSession struct {
 
 	phase        endPhase
 	endReason    call.EndReason
+	endVersion   uint64
 	farewell     *time.Timer
 	lastActivity time.Time
 	aiSpeaking   bool
@@ -287,8 +288,11 @@ func (s *liveSession) readModel(ctx context.Context) error {
 			s.aiSpeaking = true
 			s.mu.Unlock()
 			s.writes.Lock()
+			s.mu.Lock()
+			ready := s.phase != endAwaitingPlayback
+			s.mu.Unlock()
 			state := s.lifecycle.State()
-			if state != call.HumanActive && state != call.Completed {
+			if ready && state != call.HumanActive && state != call.Completed {
 				err = s.conn.Write(ctx, websocket.MessageBinary, event.Audio)
 			}
 			s.writes.Unlock()
@@ -365,7 +369,7 @@ func (s *liveSession) readModel(ctx context.Context) error {
 				return err
 			}
 			if event.Type == realtime.EventTurnEnd {
-				if err := s.finishAudio(ctx); err != nil {
+				if err := s.finishAudio(ctx, 0); err != nil {
 					return err
 				}
 			}
@@ -391,9 +395,11 @@ func (s *liveSession) requestEnd(ctx context.Context, reason call.EndReason) err
 	}
 	s.phase = endFarewell
 	s.endReason = reason
+	s.endVersion++
+	version := s.endVersion
 	if reason == call.EndCallerFinished {
 		s.farewell = time.AfterFunc(farewellGrace, func() {
-			if err := s.finishAudio(ctx); err != nil && ctx.Err() == nil {
+			if err := s.finishAudio(ctx, version); err != nil && ctx.Err() == nil {
 				slog.Debug("failed to send call_finishing", "error", err)
 			}
 		})
@@ -401,7 +407,7 @@ func (s *liveSession) requestEnd(ctx context.Context, reason call.EndReason) err
 	s.mu.Unlock()
 	slog.Info("call completion initiated", "reason", reason.String())
 	if reason == call.EndIdleTimeout {
-		return s.finishAudio(ctx)
+		return s.finishAudio(ctx, 0)
 	}
 	return nil
 }
@@ -419,6 +425,7 @@ func (s *liveSession) cancelEnd(ctx context.Context) error {
 		s.farewell = nil
 	}
 	s.phase = endActive
+	s.endVersion++
 	s.endReason = call.EndUnknown
 	s.mu.Unlock()
 	slog.Info("natural call completion cancelled by interruption")
@@ -429,9 +436,14 @@ func (s *liveSession) cancelEnd(ctx context.Context) error {
 
 // finishAudio publishes the final boundary only once, so the browser can
 // safely drain its queued PCM before acknowledging playback_finished.
-func (s *liveSession) finishAudio(ctx context.Context) error {
+func (s *liveSession) finishAudio(ctx context.Context, version uint64) error {
+	// Serialize the final boundary with outgoing audio. No binary frame may
+	// follow call_finishing, even when a farewell timer fires concurrently.
+	s.writes.Lock()
+	defer s.writes.Unlock()
 	s.mu.Lock()
-	if s.phase != endFarewell || s.lifecycle.State() != call.AIActive {
+	if s.phase != endFarewell || (version != 0 && s.endVersion != version) ||
+		s.lifecycle.State() != call.AIActive {
 		s.mu.Unlock()
 		return nil
 	}
@@ -442,10 +454,14 @@ func (s *liveSession) finishAudio(ctx context.Context) error {
 		s.farewell = nil
 	}
 	s.mu.Unlock()
-	return s.send(ctx, struct {
+	body, err := json.Marshal(struct {
 		Type   string `json:"type"`
 		Reason string `json:"reason"`
 	}{Type: "call_finishing", Reason: reason.String()})
+	if err != nil {
+		return err
+	}
+	return s.conn.Write(ctx, websocket.MessageText, body)
 }
 
 func (s *liveSession) watchInactivity(ctx context.Context, timeout time.Duration) {
