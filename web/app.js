@@ -176,9 +176,11 @@ startButton.addEventListener("click", async () => {
 
   const current = { socket: null, microphone: null, player: new AudioPlayer(), live, microphoneStarting: false, generationFinished: false, callState: "ai_active", pendingAction: false, finishing: false, playbackAcknowledged: false };
   current.player.onIdle = () => {
-    if (session !== current || !current.generationFinished || current.callState === "human_active") return;
-    aiStatus.textContent = "Listening";
+    if (session !== current) return;
     acknowledgePlayback();
+    if (!current.finishing && current.generationFinished && current.callState !== "human_active") {
+      aiStatus.textContent = "Listening";
+    }
   };
   const acknowledgePlayback = () => {
     if (session !== current || !current.finishing || current.playbackAcknowledged || current.player.sources.size > 0) return;
