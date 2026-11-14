@@ -117,7 +117,6 @@ type session struct {
 	// Only Receive accesses this; the send goroutine never touches it.
 	turns turnState
 	handoff realtime.OnceHandoffDetector
-	endRequested bool
 }
 
 func (s *session) SendAudio(ctx context.Context, pcm16 []byte) error {
@@ -189,11 +188,10 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 			if call.Args["reason"] != "conversation_finished" {
 				response.Response = map[string]any{"error": "invalid call end reason"}
 			} else {
-				if !s.endRequested {
-					s.endRequested = true
-					s.turns.pending = append(s.turns.pending, realtime.Event{Type: realtime.EventCallEndRequested})
-					slog.Info("Gemini natural call completion requested", "call_id", call.ID)
-				}
+				// Lifecycle handles duplicates; a later request may be valid
+				// if the caller interrupted an earlier farewell.
+				s.turns.pending = append(s.turns.pending, realtime.Event{Type: realtime.EventCallEndRequested})
+				slog.Info("Gemini natural call completion requested", "call_id", call.ID)
 				response.Response = map[string]any{"output": "call completion requested; final audio playback must finish"}
 			}
 		case handoffToolName:
