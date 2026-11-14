@@ -1,9 +1,12 @@
-// Each WebSocket binary message carries one 640-byte (20 ms) PCM16 chunk.
+// Upload: 640-byte PCM16/16kHz chunks. Live replies: PCM16/24kHz binary.
+// JSON text messages carry provider-independent control events.
 const MAX_BUFFERED_BYTES = 32 * 1024;
 
 export class AudioSocket {
-  constructor({ onChunk, onDisconnect }) {
+  constructor({ endpoint = "/ws/audio", onChunk, onEvent = () => {}, onDisconnect }) {
+    this.endpoint = endpoint;
     this.onChunk = onChunk;
+    this.onEvent = onEvent;
     this.onDisconnect = onDisconnect;
     this.socket = null;
   }
@@ -11,7 +14,7 @@ export class AudioSocket {
   connect() {
     if (this.socket) throw new Error("WebSocket is already connected.");
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${scheme}//${location.host}/ws/audio`);
+    const socket = new WebSocket(`${scheme}//${location.host}${this.endpoint}`);
     this.socket = socket;
     socket.binaryType = "arraybuffer";
 
@@ -30,7 +33,6 @@ export class AudioSocket {
         resolve();
       };
       socket.onerror = () => {
-        // Browsers intentionally do not expose specific WebSocket errors.
         if (socket.readyState !== WebSocket.OPEN) {
           clearTimeout(timeout);
           reject(new Error("Could not connect to the Go WebSocket server."));
@@ -47,11 +49,26 @@ export class AudioSocket {
         this.onDisconnect(new Error("WebSocket connection closed."));
       };
       socket.onmessage = ({ data }) => {
-        if (!(data instanceof ArrayBuffer) || data.byteLength !== 640) {
-          this.onDisconnect(new Error("Unexpected audio data from server."));
-          return;
+        if (data instanceof ArrayBuffer) {
+          if (data.byteLength === 0 || data.byteLength > 64 * 1024 || data.byteLength % 2 !== 0) {
+            this.onDisconnect(new Error("Unexpected PCM16 audio data from server."));
+            return;
+          }
+          // Echo keeps fixed-size chunks; Gemini can return variable-size chunks.
+          if (this.endpoint === "/ws/audio" && data.byteLength !== 640) {
+            this.onDisconnect(new Error("Unexpected echo audio chunk size."));
+            return;
+          }
+          this.onChunk(data);
+        } else if (typeof data === "string") {
+          try {
+            const event = JSON.parse(data);
+            if (typeof event.type !== "string") throw new Error("Missing event type");
+            this.onEvent(event);
+          } catch {
+            this.onDisconnect(new Error("Invalid server event."));
+          }
         }
-        this.onChunk(data);
       };
     });
   }
@@ -60,7 +77,7 @@ export class AudioSocket {
     const socket = this.socket;
     if (!socket || socket.readyState !== WebSocket.OPEN) return false;
     if (!(chunk instanceof Int16Array) || chunk.byteLength !== 640) return false;
-    if (socket.bufferedAmount > MAX_BUFFERED_BYTES) return false; // Drop rather than accumulate latency.
+    if (socket.bufferedAmount > MAX_BUFFERED_BYTES) return false;
     socket.send(chunk);
     return true;
   }

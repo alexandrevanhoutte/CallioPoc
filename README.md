@@ -1,64 +1,84 @@
 # CallioPoc
 
-Local single-user AI receptionist POC. The browser captures PCM16 audio and streams it to Go over WebSocket. For now, Go echoes the exact audio bytes back; a Gemini Live session will replace this in CI-04.
+Local, single-user AI receptionist POC. The browser streams PCM16 microphone audio over WebSocket to Go. CI-04 integrates **Gemini Live** in French, while keeping the original audio echo test mode.
 
 ## Requirements
 
-- Go 1.23 or newer
-- Chrome, Firefox or Safari with microphone and AudioWorklet support
-- Optional: Node.js 22+ for browser module unit tests
+- Go **1.23+** (Gemini Go SDK pinned to v1.26.0 for Go 1.23 compatibility)
+- Modern browser (Chrome/Firefox/Safari) with microphone and AudioWorklet support
+- Node.js 22+ recommended for frontend tests
 
-## Run
+## Local setup
 
-From the repository root:
+```bash
+cp .env.example .env
+```
+
+Open `.env` and **manually** set `GEMINI_API_KEY` to your own key. Do not commit or share it. The repository's `.gitignore` excludes `.env`, `.env.*` except `.env.example`.
 
 ```bash
 go mod tidy
 go run ./cmd/callio
 ```
 
-Open <http://localhost:8080>. The HTTP server binds to `127.0.0.1` for local-only use; localhost is a secure context for microphone access.
+Open <http://localhost:8080>. The server binds to loopback only; localhost is a secure browser context. Existing process environment variables take precedence over `.env` values. The server starts without a Gemini key, but **only Echo mode** is available until the key is supplied.
 
-## Manual streaming test
+## Configuration
 
-1. Click **Check health** to verify that Go is running.
-2. Click **Start microphone & streaming** and grant microphone permission. WebSocket should show **Connected** and microphone **Recording**.
-3. Speak. The audio level should move. **Chunks sent** and **Chunks received** should both increase continuously (approximately 50 per second) as the Go backend echoes audio.
-4. To hear the returned audio, use **headphones**, then check **Play echoed audio**. This is disabled by default to prevent speaker feedback.
-5. Click **Stop**. Confirm the microphone indicator turns off and WebSocket becomes **Disconnected**. Start again to verify resource cleanup.
-6. Stop the Go server while the microphone is active: the browser should show a disconnect and release microphone resources.
+| Variable | Default | Description |
+| --- | --- | --- |
+| `PORT` | `8080` | HTTP port |
+| `AI_PROVIDER` | `gemini` | Provider; only Gemini implemented |
+| `GEMINI_API_KEY` | empty | Secret, server-side only |
+| `GEMINI_MODEL` | `gemini-3.8-live` | Live conversation model |
 
-### Binary audio protocol
+To switch model, change `GEMINI_MODEL`. Future providers can implement `realtime.VoiceProvider` and `realtime.VoiceSession` without changing transport handlers.
 
-Each WebSocket binary message to `GET /ws/audio` is **exactly 640 bytes** of signed **PCM16 little-endian**, **mono**, **16 kHz** audio (320 samples / 20 ms). The Go endpoint echoes the identical bytes. No JSON, Base64, disk recording or AI processing is involved yet.
+## Testing
 
-Invalid message types/sizes are rejected. The browser limits buffered WebSocket output to around 32 KiB and **drops new chunks** when the queue is backed up instead of accumulating latency; the **Chunks dropped** counter reports this. Playback has a separate 250 ms queue cap.
+1. Select **Echo** for the CI-03 loopback audio test (no API key needed).
+2. Select **Gemini Live** and click **Start conversation**. The assistant speaks **first** with a short greeting; after the greeting finishes, the browser requests microphone permission and begins capturing the caller.
+3. Speak French after the greeting. Gemini uses **500 ms** of detected silence to end your turn; responses are instructed to stay within one or two short French sentences. The **Chunks sent** counter increases after microphone access; **Chunks received** counts output chunks.
+4. Wear headphones to avoid sound feedback. Gemini audio playback is enabled on the user click; Echo playback remains an optional toggle.
+5. Click **Stop**, then repeat. Verify microphone tracks, WebSocket and Gemini session all close.
+6. Stop the backend during a session; it should release provider/browser resources.
 
-### Tests
+**Audio contract:** Browser sends 20 ms chunks of mono PCM16 signed little-endian 16 kHz, **640 bytes/message**, to `GET /ws/live`. Go sends Gemini audio as binary PCM16 mono **24 kHz**, normally 960-byte chunks (final chunk can be shorter); JSON text messages carry non-audio events (`turn_end`, future transcripts). `GET /ws/audio` retains the existing 16 kHz echo protocol.
+
+The browser's AI status indicator is for local testing only, not the future telephone caller. The assistant greeting is a separate initial content turn; microphone streaming starts after the welcome audio is scheduled and played. The **500 ms** silence timeout may require adjustment if it interrupts natural pauses. CI-05 will improve full-duplex interruption handling.
+
+The interface defines `EventType` as numeric `iota + 1` with `NewEventType(string)` and `String()`. CI-04 now forwards Gemini's basic `interrupted` notification and clears queued playback. CI-05 adds advanced interruption handling; CI-06 adds transcription.
+
+### Troubleshooting: Gemini's voice is chopped or silent
+
+Gemini sends output in PCM16 24 kHz chunks, sometimes much faster than real-time playback. The browser now schedules up to **20 seconds** of audio without dropping the first few seconds of a burst; the earlier 250 ms limit silently discarded most speech.
+
+Watch the new debug counters:
+- **Chunks received** increases but **Playback dropped** increases: the playback queue is full or the browser audio context isn't running. Check the developer console for a one-time warning containing queued seconds/context state.
+- **Silent model chunks** increases rapidly (fully zero PCM16 payloads): the upstream model may be returning silence, not a sample-rate conversion problem.
+- **AI turn interruptions** increases during the model's reply: Gemini's VAD may be hearing the output through your microphone. Test with headphones; queued playback is flushed on interruption.
+- **Chunks received** stays at zero: check Gemini model availability, server logs, and the WebSocket connection.
+
+Live audio interruptions and all-zero output chunks are separate from WebSocket or audio-format errors, and the new counters make it possible to distinguish them.
+
+## Validation commands
 
 ```bash
+go mod tidy
 go test ./...
 go test -race ./...
 go vet ./...
 node --test tests/*.test.cjs tests/*.test.mjs
 ```
 
-Browser testing is still required to validate actual permissions, capture and audio output hardware.
-
-## Configuration
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `PORT` | `8080` | HTTP port (1–65535) |
-
-Example: `PORT=9090 go run ./cmd/callio`. `.env.example` documents settings; `.env` is not loaded automatically.
+A manual microphone/AI call is essential. Gemini access, quotas and billing depend on your Google project. Do not paste the API key into GitHub issues, logs or chat.
 
 ## Layout
 
-- `cmd/callio/` — application entrypoint and dependency composition.
-- `internal/config/` — configuration.
-- `internal/httpapi/` — HTTP routing, WebSocket echo handler and server lifecycle.
-- `web/` — static test page, microphone capture, WebSocket client, audio playback.
-- `tests/` — dependency-free Node tests for browser audio modules.
-
-The Go HTTP handler stays small and deliberately does not introduce a service abstraction before CI-04. WebSocket connections are closed on stop, disconnect or application shutdown.
+- `cmd/callio/` — dependency wiring (provider chosen once, at startup).
+- `internal/config/` — `.env` and environment configuration.
+- `internal/httpapi/` — `/ws/audio` echo and `/ws/live` generic real-time bridge.
+- `internal/realtime/` — provider/session interfaces and typed events.
+- `internal/realtime/gemini/` — Gemini Live SDK adapter.
+- `web/` — browser microphone, WebSocket client, audio playback.
+- `tests/` — frontend audio tests.
