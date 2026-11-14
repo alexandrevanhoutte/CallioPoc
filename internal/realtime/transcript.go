@@ -17,6 +17,7 @@ const (
 // the same ID replace the previous partial text rather than duplicating it.
 type TranscriptSegment struct {
 	ID        string    `json:"segment_id"`
+	Order     uint64    `json:"order"` // Logical turn ordering; stable across late transcript updates.
 	Speaker   Speaker   `json:"speaker"`
 	Text      string    `json:"text"`
 	Final     bool      `json:"final"`

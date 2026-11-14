@@ -19,7 +19,7 @@ func TestTranscriptionState(t *testing.T) {
 	}
 	caller1 := next(realtime.SpeakerCaller, "Bon", false)
 	ai1 := next(realtime.SpeakerAI, "Bonjour", false)
-	callerFinal := next(realtime.SpeakerCaller, "Bonjour", true)
+	callerFinal := next(realtime.SpeakerCaller, "jour", true) // Gemini streams deltas
 	if callerFinal.ID != caller1.ID || callerFinal.Text != "Bonjour" || !callerFinal.Final {
 		t.Fatalf("caller final update: %+v", callerFinal)
 	}
