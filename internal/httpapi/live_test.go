@@ -26,6 +26,7 @@ type fakeVoiceProvider struct {
 func (p *fakeVoiceProvider) Open(_ context.Context) (realtime.VoiceSession, error) {
 	s := &fakeVoiceSession{
 		events: make(chan realtime.Event, 8),
+		streamEnds: make(chan struct{}, 8),
 		closed: make(chan struct{}),
 	}
 	p.mu.Lock()
@@ -36,6 +37,7 @@ func (p *fakeVoiceProvider) Open(_ context.Context) (realtime.VoiceSession, erro
 
 type fakeVoiceSession struct {
 	events chan realtime.Event
+	streamEnds chan struct{}
 	closed chan struct{}
 	once sync.Once
 }
@@ -48,6 +50,17 @@ func (s *fakeVoiceSession) SendAudio(ctx context.Context, audio []byte) error {
 	copy(out.Audio, audio)
 	select {
 	case s.events <- out:
+		return nil
+	case <-s.closed:
+		return context.Canceled
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *fakeVoiceSession) EndAudioStream(ctx context.Context) error {
+	select {
+	case s.streamEnds <- struct{}{}:
 		return nil
 	case <-s.closed:
 		return context.Canceled
@@ -707,5 +720,119 @@ func TestSummaryFailureDoesNotBlockCompletion(t *testing.T) {
 	_, body, err = conn.Read(ctx)
 	if err != nil || !bytes.Contains(body, []byte(`"type":"summary_error"`)) {
 		t.Fatalf("expected summary_error after completion: %s (%v)", body, err)
+	}
+}
+
+
+func TestLiveAudioStreamEnd(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := &fakeVoiceProvider{}
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	defer server.Close()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+	if err != nil { t.Fatal(err) }
+	defer conn.CloseNow()
+
+	pcm := bytes.Repeat([]byte{1, 2}, 320)
+	if err := conn.Write(ctx, websocket.MessageBinary, pcm); err != nil { t.Fatal(err) }
+	if kind, _, err := conn.Read(ctx); err != nil || kind != websocket.MessageBinary {
+		t.Fatalf("expected audio before stream end: kind=%v err=%v", kind, err)
+	}
+	provider.mu.Lock()
+	s := provider.session
+	provider.mu.Unlock()
+	if s == nil { t.Fatal("provider session not initialized") }
+
+	end := []byte(`{"type":"audio_stream_end"}`)
+	if err := conn.Write(ctx, websocket.MessageText, end); err != nil { t.Fatal(err) }
+	select {
+	case <-s.streamEnds:
+	case <-ctx.Done(): t.Fatal("provider did not receive audio stream end")
+	}
+
+	// A second end must not reach the provider. The next echoed PCM acts
+	// as an ordering barrier for both previously received messages.
+	if err := conn.Write(ctx, websocket.MessageText, end); err != nil { t.Fatal(err) }
+	if err := conn.Write(ctx, websocket.MessageBinary, pcm); err != nil { t.Fatal(err) }
+	if kind, _, err := conn.Read(ctx); err != nil || kind != websocket.MessageBinary {
+		t.Fatalf("audio did not resume after stream end: kind=%v err=%v", kind, err)
+	}
+	select {
+	case <-s.streamEnds: t.Fatal("duplicate end was forwarded to provider")
+	default:
+	}
+	if err := conn.Write(ctx, websocket.MessageText, end); err != nil { t.Fatal(err) }
+	select {
+	case <-s.streamEnds:
+	case <-ctx.Done(): t.Fatal("resumed speech stream did not end")
+	}
+	select {
+	case <-s.streamEnds: t.Fatal("unexpected additional end event")
+	default:
+	}
+}
+
+func TestAudioStreamEndIgnoredWithoutPriorAudio(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := &fakeVoiceProvider{}
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	defer server.Close()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+	if err != nil { t.Fatal(err) }
+	defer conn.CloseNow()
+
+	// The provider opens on connect, but no stream has been started.
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"audio_stream_end"}`)); err != nil { t.Fatal(err) }
+	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 640)); err != nil { t.Fatal(err) }
+	if kind, _, err := conn.Read(ctx); err != nil || kind != websocket.MessageBinary {
+		t.Fatalf("connection was disrupted by empty stream end: kind=%v err=%v", kind, err)
+	}
+	provider.mu.Lock()
+	s := provider.session
+	provider.mu.Unlock()
+	select {
+	case <-s.streamEnds: t.Fatal("empty stream sent unnecessary end signal")
+	default:
+	}
+}
+
+func TestAudioStreamEndRejectedDuringHumanTakeover(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := &fakeVoiceProvider{}
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	defer server.Close()
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+	if err != nil { t.Fatal(err) }
+	defer conn.CloseNow()
+	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 640)); err != nil { t.Fatal(err) }
+	if _, _, err := conn.Read(ctx); err != nil { t.Fatal(err) }
+	provider.mu.Lock()
+	s := provider.session
+	provider.mu.Unlock()
+	s.events <- realtime.Event{
+		Type: realtime.EventHandoffRequired,
+		Handoff: &realtime.HandoffRequest{
+			Reason: realtime.HandoffOwnerRequested,
+			Context: realtime.HandoffContext{Purpose: "Test", Summary: "Owner requested"},
+		},
+	}
+	for i := 0; i < 2; i++ {
+		if _, _, err := conn.Read(ctx); err != nil { t.Fatal(err) }
+	}
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"accept"}`)); err != nil { t.Fatal(err) }
+	if _, _, err := conn.Read(ctx); err != nil { t.Fatal(err) }
+	if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"audio_stream_end"}`)); err != nil { t.Fatal(err) }
+	kind, body, err := conn.Read(ctx)
+	if err != nil { t.Fatal(err) }
+	if kind != websocket.MessageText || !bytes.Contains(body, []byte(`"type":"call_error"`)) ||
+		!bytes.Contains(body, []byte(`"action":"audio_stream_end"`)) {
+		t.Fatalf("expected rejected stream end after takeover, got %s", body)
+	}
+	select {
+	case <-s.streamEnds: t.Fatal("audio stream end forwarded during human takeover")
+	default:
 	}
 }

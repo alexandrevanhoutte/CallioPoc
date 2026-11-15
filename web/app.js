@@ -1,4 +1,5 @@
 import { MicrophoneCapture } from "./microphone.js";
+import { VoiceActivityGate } from "./voice-activity-gate.js";
 import { AudioSocket } from "./websocket.js";
 import { AudioPlayer } from "./audio-player.js";
 import { TranscriptView } from "./transcript.js";
@@ -17,6 +18,7 @@ const aiStatus = document.querySelector("#ai-status");
 const sent = document.querySelector("#ws-sent");
 const received = document.querySelector("#ws-received");
 const dropped = document.querySelector("#ws-dropped");
+const filtered = document.querySelector("#ws-filtered");
 const playbackScheduled = document.querySelector("#playback-scheduled");
 const playbackDropped = document.querySelector("#playback-dropped");
 const silentChunks = document.querySelector("#ai-silent-chunks");
@@ -112,6 +114,7 @@ async function stopSession(error) {
   echo.disabled = true;
   echo.checked = false;
   micReady.classList.remove("is-active");
+  current.gate?.reset();
   try {
     // Always attempt all cleanup operations, even if one fails.
     try { current.socket.close(); } catch (e) { error ??= e; }
@@ -146,11 +149,20 @@ async function startMicrophone(current, socket) {
         const db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
         level.value = Math.max(0, Math.min(100, Math.round((db + 60) * (100 / 54))));
         signalStatus.textContent = rms >= 0.008
-          ? "Sound detected" : "Silence / low input (chunks arriving)";
-        if (socket.send(pcm16)) {
-          sent.value = String(Number(sent.value) + 1);
-        } else {
-          dropped.value = String(Number(dropped.value) + 1);
+          ? "Sound detected"
+          : live ? "Silence / low input (filtered when idle)" : "Silence / low input (chunks arriving)";
+        const result = current.gate?.push(pcm16, rms) ?? { frames: [pcm16], end: false };
+        if (current.gate) filtered.value = String(current.gate.filtered);
+        for (const frame of result.frames) {
+          if (socket.send(frame)) {
+            sent.value = String(Number(sent.value) + 1);
+          } else {
+            dropped.value = String(Number(dropped.value) + 1);
+          }
+        }
+        // The audio frames and their final boundary must remain in WS order.
+        if (result.end && !socket.sendControl("audio_stream_end")) {
+          void stopSession(new Error("Could not finalize microphone audio stream."));
         }
       },
       onError: (error) => { if (session === current) void stopSession(error); },
@@ -188,9 +200,9 @@ startButton.addEventListener("click", async () => {
   callStateLabel.textContent = live ? "Connecting" : "Echo test";
   callFeedback.textContent = "";
   handoffControls.hidden = true;
-  for (const counter of [chunks, sent, received, dropped, playbackScheduled, playbackDropped, silentChunks, interruptions]) counter.value = "0";
+  for (const counter of [chunks, sent, received, dropped, filtered, playbackScheduled, playbackDropped, silentChunks, interruptions]) counter.value = "0";
 
-  const current = { socket: null, microphone: null, player: new AudioPlayer(), live, microphoneStarting: false, generationFinished: false, callState: "ai_active", pendingAction: false, finishing: false, playbackAcknowledged: false };
+  const current = { socket: null, microphone: null, player: new AudioPlayer(), gate: live ? new VoiceActivityGate() : null, live, microphoneStarting: false, generationFinished: false, callState: "ai_active", pendingAction: false, finishing: false, playbackAcknowledged: false };
   current.player.onIdle = () => {
     if (session !== current) return;
     acknowledgePlayback();
@@ -254,6 +266,7 @@ startButton.addEventListener("click", async () => {
         if (!["ai_active", "handoff_required", "human_active", "completed"].includes(event.state)) return;
         showCallState(current, event.state, event.outcome);
         if (event.state === "human_active") {
+          current.gate?.reset();
           current.player.clear();
           void current.microphone?.stop().catch((error) => {
             console.warn("Failed to stop microphone after takeover", error);

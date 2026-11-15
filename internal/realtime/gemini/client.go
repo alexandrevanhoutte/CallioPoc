@@ -108,6 +108,15 @@ func (s *session) SendAudio(ctx context.Context, pcm16 []byte) error {
 	})
 }
 
+// EndAudioStream prompts Gemini to finalize the input. New audio reopens the
+// stream while Gemini's automatic activity detection remains enabled.
+func (s *session) EndAudioStream(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.live.SendRealtimeInput(genai.LiveRealtimeInput{AudioStreamEnd: true})
+}
+
 func (s *session) Receive(ctx context.Context) (realtime.Event, error) {
 	for {
 		if err := ctx.Err(); err != nil {

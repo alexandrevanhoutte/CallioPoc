@@ -85,7 +85,7 @@ export class AudioSocket {
   sendControl(type) {
     const socket = this.socket;
     if (this.endpoint !== "/ws/live" || !socket || socket.readyState !== WebSocket.OPEN) return false;
-    if (!["accept", "decline", "no_answer", "end_call", "playback_finished"].includes(type)) return false;
+    if (!["accept", "decline", "no_answer", "end_call", "playback_finished", "audio_stream_end"].includes(type)) return false;
     socket.send(JSON.stringify({ type }));
     return true;
   }
