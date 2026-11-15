@@ -93,7 +93,7 @@ test("live WebSocket sends only allowed lifecycle commands", async () => {
   const ws = FakeWebSocket.instances.at(-1);
   ws.open();
   await connected;
-  for (const type of ["accept", "decline", "no_answer", "end_call", "playback_finished"]) {
+  for (const type of ["accept", "decline", "no_answer", "end_call", "playback_finished", "audio_stream_end"]) {
     assert.equal(connection.sendControl(type), true);
     assert.deepEqual(JSON.parse(ws.sent.at(-1)), { type });
   }
@@ -104,4 +104,5 @@ test("live WebSocket sends only allowed lifecycle commands", async () => {
   assert.equal(connection.sendControl("end_call"), false);
   const echo = new AudioSocket({ onChunk() {}, onDisconnect() {} });
   assert.equal(echo.sendControl("accept"), false);
+  assert.equal(echo.sendControl("audio_stream_end"), false);
 });

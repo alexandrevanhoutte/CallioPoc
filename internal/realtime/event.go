@@ -77,6 +77,8 @@ type VoiceProvider interface {
 // Implementations must unblock Receive after Close.
 type VoiceSession interface {
 	SendAudio(ctx context.Context, pcm16 []byte) error
+	// EndAudioStream signals a speech boundary without closing the session.
+	EndAudioStream(ctx context.Context) error
 	Receive(ctx context.Context) (Event, error)
 	Close() error
 }
