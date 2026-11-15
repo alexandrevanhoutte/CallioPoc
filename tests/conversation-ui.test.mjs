@@ -33,6 +33,9 @@ class FakeNode {
   }
 }
 
+// Node has no DOM; this minimal fixture only supports the view operations tested.
+globalThis.document ??= { createElement: tag => new FakeNode(tag) };
+
 function view() {
   const container = new FakeNode();
   const status = new FakeNode();
