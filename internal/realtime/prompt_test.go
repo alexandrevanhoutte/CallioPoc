@@ -47,6 +47,21 @@ func TestMultilingualInstructions(t *testing.T) {
 	if _, err := realtime.HandoffOutcomePrompt("invalid"); err == nil { t.Fatal("invalid outcome accepted") }
 }
 
+func TestWaitForCallerResponseBeforeHandoffInstructions(t *testing.T) {
+	for _, clause := range []string{
+		"wait for a subsequent caller turn",
+		"never ask for the name and call request_handoff in the same assistant turn",
+		"caller explicitly refuses",
+		"A brief pause, missing or partial transcription",
+		"rather than triggering handoff",
+		"before saying the request has been registered",
+	} {
+		if !strings.Contains(realtime.ReceptionistInstructions, clause) {
+			t.Fatalf("missing handoff sequencing instruction: %q", clause)
+		}
+	}
+}
+
 func TestLocaleInvalidString(t *testing.T) {
 	if realtime.LocaleFrench != 1 || realtime.LocaleEnglish != 2 || realtime.LocaleKorean != 3 {
 		t.Fatal("Locale constants must use iota + 1")
