@@ -549,7 +549,7 @@ progress::-moz-progress-bar {
   pointer-events: none;
   color: var(--muted);
 }
-.transcript-list:not(:empty) + .transcript-empty {
+.transcript-list:not(:empty) ~ .transcript-empty {
   display: none;
 }
 .empty-icon {
