@@ -2,7 +2,8 @@ import { MicrophoneCapture } from "./microphone.js";
 import { VoiceActivityGate } from "./voice-activity-gate.js";
 import { AudioSocket } from "./websocket.js";
 import { AudioPlayer } from "./audio-player.js";
-import { TranscriptView } from "./transcript.js";
+// The versioned URL avoids mixing a cached pre-CI-13.3 transcript module with this app.
+import { TranscriptView } from "./transcript.js?v=ci-13-3";
 import { SetupView, selectedMode } from "./setup.js";
 import { SummaryView } from "./summary.js";
 
