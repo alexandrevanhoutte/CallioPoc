@@ -5,22 +5,33 @@ export class SummaryView {
   }
 
   reset() {
+    this.pending = false;
     this.panel.hidden = true;
     this.details.hidden = true;
     this.status.textContent = "Waiting for call completion…";
   }
 
   loading() {
+    this.pending = true;
     this.panel.hidden = false;
     this.details.hidden = true;
     this.status.textContent = "Generating summary…";
   }
 
+  unavailable() {
+    if (!this.pending) return;
+    this.pending = false;
+    this.panel.hidden = false;
+    this.details.hidden = true;
+    this.status.textContent = "Summary unavailable. The call is complete; the transcript remains above.";
+  }
+
   render(event) {
+    this.pending = false;
     this.panel.hidden = false;
     const data = event.type === "call_summary" ? event.summary : null;
     if (!data || typeof data.summary !== "string" || !data.summary.trim()) {
-      this.status.textContent = "Summary unavailable";
+      this.status.textContent = "Summary unavailable. The call is complete; the transcript remains above.";
       this.details.hidden = true;
       return;
     }
