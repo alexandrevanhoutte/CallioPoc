@@ -74,9 +74,10 @@ export class TranscriptStore {
 }
 
 export class TranscriptView {
-  constructor(container, status) {
+  constructor(container, status, announcement = null) {
     this.container = container;
     this.status = status;
+    this.announcement = announcement;
     this.store = new TranscriptStore();
     this.rows = new Map();
     this.handoffRow = null;
@@ -93,13 +94,21 @@ export class TranscriptView {
       const speaker = document.createElement("strong");
       speaker.textContent = segment.speaker === "AI" ? "Callio" : "Caller";
       const text = document.createElement("p");
-      row.append(speaker, text);
+      const pending = document.createElement("span");
+      pending.className = "transcript-progress";
+      pending.textContent = "Transcribing…";
+      pending.setAttribute("aria-hidden", "true");
+      row.append(speaker, text, pending);
       this.rows.set(segment.id, row);
       this.container.append(row);
     }
     row.classList.toggle("transcript-partial", !segment.final);
     row.querySelector("p").textContent = segment.text;
     this.renderTimeline();
+    // Provisional updates can arrive rapidly. Announce finalized text only.
+    if (segment.final && this.announcement) {
+      this.announcement.textContent = `${segment.speaker === "AI" ? "Callio" : "Caller"}: ${segment.text}`;
+    }
   }
 
   addHandoff(event) {
@@ -108,7 +117,7 @@ export class TranscriptView {
     const row = document.createElement("div");
     row.className = "handoff-card";
     const title = document.createElement("strong");
-    title.textContent = "Handoff requested";
+    title.textContent = "Simulated handoff requested";
     row.append(title);
     const detail = (label, value) => {
       if (typeof value !== "string" || value.length === 0) return;
@@ -116,7 +125,8 @@ export class TranscriptView {
       line.textContent = `${label}: ${value}`;
       row.append(line);
     };
-    detail("Reason", event.reason);
+    detail("Reason", event.reason === "owner_requested"
+      ? "Caller asked for the owner" : "Callio needs assistance");
     detail("Caller", context.caller_name);
     detail("Company", context.company);
     detail("Purpose", context.purpose);
@@ -124,12 +134,28 @@ export class TranscriptView {
     detail("Email", context.email);
     detail("Phone", context.phone_number);
     const note = document.createElement("p");
-    note.className = "note";
-    note.textContent = "Awaiting human takeover — no real transfer performed.";
+    note.className = "handoff-result";
+    note.textContent = "Awaiting your decision — no real transfer will occur.";
     row.append(note);
     this.handoffRow = row;
     this.status.textContent = "Handoff requested";
     this.renderTimeline();
+  }
+
+  // Called only after the backend confirms the simulated handoff outcome.
+  resolveHandoff(outcome) {
+    const status = this.handoffRow?.querySelector(".handoff-result");
+    if (!status) return;
+    const messages = {
+      accepted: "Human takeover accepted (simulation only).",
+      decline: "Takeover declined; Callio will continue.",
+      no_answer: "No answer simulated; Callio will continue.",
+    };
+    if (messages[outcome]) status.textContent = messages[outcome];
+  }
+
+  begin(live) {
+    this.status.textContent = live ? "Listening for speech…" : "Echo test — no transcript in this mode";
   }
 
   renderTimeline() {
@@ -144,8 +170,8 @@ export class TranscriptView {
 
   finish() {
     this.status.textContent = this.store.segments.size || this.store.handoff
-      ? "Conversation ended — timeline retained in this page"
-      : "No transcript received";
+      ? "Conversation ended — transcript retained until the next call"
+      : "Call ended — no transcript received";
   }
 
   clear() {
@@ -153,6 +179,7 @@ export class TranscriptView {
     this.rows.clear();
     this.handoffRow = null;
     this.container.replaceChildren();
-    this.status.textContent = "Waiting for conversation…";
+    if (this.announcement) this.announcement.textContent = "";
+    this.status.textContent = "No conversation yet";
   }
 }
