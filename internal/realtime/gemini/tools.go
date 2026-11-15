@@ -19,7 +19,7 @@ const handoffToolName = "request_handoff"
 func handoffTool() *genai.Tool {
 	return &genai.Tool{FunctionDeclarations: []*genai.FunctionDeclaration{{
 		Name: handoffToolName,
-		Description: "Record a request for a simulated handoff, not a real phone transfer. Only call after attempting to ask the caller’s name (unless already known) and clarifying the specific purpose. An unknown or declined name may be omitted; never invent contact details. Supply an accurate purpose and factual summary. Call BEFORE verbally confirming that the request was registered.",
+		Description: "Record a request for a simulated handoff, not a real phone transfer. If the caller's name is unknown, ask for it and wait for a subsequent caller turn BEFORE calling this function. Never call in the same assistant turn as the name question. A brief pause, silence or partial transcription does not count as a refusal or an answer. If the caller explicitly refuses to give a name in a later turn, omit caller_name. If already known, do not ask again. Clarify the specific purpose and never invent contact details. Supply an accurate purpose and factual summary. Call BEFORE verbally confirming that the request was registered.",
 		Parameters: &genai.Schema{
 			Type: genai.TypeObject,
 			Properties: map[string]*genai.Schema{
