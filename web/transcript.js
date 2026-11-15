@@ -86,7 +86,8 @@ export class TranscriptView {
   update(event) {
     const segment = this.store.upsert(event);
     if (!segment) return;
-    this.status.textContent = this.store.handoff ? "Handoff requested" : "Live transcript";
+    const label = this.store.handoff ? "Handoff requested" : "Live transcript";
+    if (this.status.textContent !== label) this.status.textContent = label;
     let row = this.rows.get(segment.id);
     if (!row) {
       row = document.createElement("div");
