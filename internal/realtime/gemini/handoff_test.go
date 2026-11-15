@@ -1,6 +1,7 @@
 package gemini
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
@@ -29,6 +30,21 @@ func TestParseHandoff(t *testing.T) {
 	} {
 		if _, err := parseHandoff(args); err == nil {
 			t.Fatalf("expected parse error for %+v", args)
+		}
+	}
+}
+
+func TestHandoffToolRequiresCallerResponse(t *testing.T) {
+	declaration := handoffTool().FunctionDeclarations[0]
+	for _, clause := range []string{
+		"wait for a subsequent caller turn",
+		"Never call in the same assistant turn",
+		"partial transcription does not count",
+		"explicitly refuses",
+		"omit caller_name",
+	} {
+		if !strings.Contains(declaration.Description, clause) {
+			t.Fatalf("missing handoff tool instruction: %q", clause)
 		}
 	}
 }
