@@ -1,0 +1,12 @@
+id: recruiting
+description: Job opportunity, recruitment call or interview scheduling request.
+required: [caller_name, position]
+optional: [company, preferred_dates, purpose]
+actions: [request_handoff, record_message]
+instructions: |
+  Ask for the caller's name and which role or position the interview concerns, separately, only if missing.
+  A supplied name does NOT answer the position question. Hesitation is not a position.
+  If the caller does not know the exact position, explicitly acknowledge that and mark it unavailable.
+  You can ask about company, but it is optional.
+  For scheduling requests, gather preferred dates only when needed (one question at a time), for example if the owner is unavailable or the caller wants a callback.
+  Treat scheduling as a request, not a confirmed booking. Do not claim a meeting is scheduled without an explicit scheduling confirmation.
