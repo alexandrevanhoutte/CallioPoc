@@ -27,11 +27,13 @@ jobs:
         run: go test ./...
 
       - name: Run race detector
+        if: ${{ !cancelled() }}
         env:
           CGO_ENABLED: "1"
         run: go test -race ./...
 
       - name: Run go vet
+        if: ${{ !cancelled() }}
         run: go vet ./...
 
   javascript:
