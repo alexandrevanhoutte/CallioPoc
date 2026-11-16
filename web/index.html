@@ -121,16 +121,69 @@
         </section>
 
         <details class="advanced">
-          <summary><span class="advanced-title"><span class="advanced-icon" aria-hidden="true">⌘</span><span><strong>Advanced tools</strong><small>Stream diagnostics, audio counters and Echo playback</small></span></span><span class="chevron" aria-hidden="true"></span></summary>
+          <summary><span class="advanced-title"><span class="advanced-icon" aria-hidden="true">⌘</span><span><strong>Advanced tools</strong><small>Audio diagnostics and WebSocket events</small></span></span><span class="chevron" aria-hidden="true"></span></summary>
           <div class="advanced-body">
-            <div class="advanced-status"><p>WebSocket <strong id="ws-status" role="status">Disconnected</strong></p><p>Input format <strong>PCM16 · 16 kHz · mono · 20 ms</strong></p></div>
-            <div class="counters">
-              <p>Processed mic <output id="mic-chunks">0</output></p><p>Uploaded <output id="ws-sent">0</output></p><p>Filtered silence <output id="ws-filtered">0</output></p><p>Received <output id="ws-received">0</output></p><p>Dropped upload <output id="ws-dropped">0</output></p><p>Scheduled playback <output id="playback-scheduled">0</output></p><p>Dropped playback <output id="playback-dropped">0</output></p><p>Silent AI chunks <output id="ai-silent-chunks">0</output></p><p>AI interruptions <output id="ai-interruptions">0</output></p>
-            </div>
-            <label class="echo-option"><input id="echo-playback" type="checkbox" disabled /> Play echoed audio (headphones recommended)</label>
-            <p class="helper">Gemini replies play automatically. Packet inspection and manual test messages will be added later.</p>
+            <section class="advanced-section" aria-labelledby="advanced-diagnostics-heading">
+              <h3 id="advanced-diagnostics-heading">Diagnostics</h3>
+              <p class="helper">Audio and connection counters for this call. Hover over the info icons, or tap them on touch devices, to see explanations.</p>
+              <section class="diagnostic-group" aria-label="Microphone metrics">
+                <h4>Microphone</h4>
+                <div class="counters">
+                  <div class="metric-card"><div class="metric-label"><span>Microphone chunks captured</span><button type="button" class="metric-help-trigger" aria-label="Explain Microphone chunks captured" aria-expanded="false" data-help="Audio chunks captured from your microphone before any silence filtering."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="mic-chunks">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span>Silent microphone audio filtered</span><button type="button" class="metric-help-trigger" aria-label="Explain Silent microphone audio filtered" aria-expanded="false" data-help="Microphone chunks deliberately skipped so the server does not receive unnecessary silence."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ws-filtered">0</output></div>
+                </div>
+              </section>
+              <section class="diagnostic-group" aria-label="Network metrics">
+                <h4>Network</h4>
+                <div class="counters">
+                  <div class="metric-card"><div class="metric-label"><span>Audio chunks sent</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio chunks sent" aria-expanded="false" data-help="Microphone audio chunks successfully queued for WebSocket transmission. This does not guarantee delivery."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ws-sent">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span>Audio chunks received</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio chunks received" aria-expanded="false" data-help="Audio chunks received from the WebSocket server, before optional playback."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ws-received">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span>Audio chunks not sent</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio chunks not sent" aria-expanded="false" data-help="Microphone chunks that were rejected because the WebSocket was unavailable or its outgoing buffer was full."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ws-dropped">0</output></div>
+                </div>
+              </section>
+              <section class="diagnostic-group" aria-label="Playback metrics">
+                <h4>Playback</h4>
+                <div class="counters">
+                  <div class="metric-card"><div class="metric-label"><span>Audio queued for playback</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio queued for playback" aria-expanded="false" data-help="Received audio chunks successfully scheduled for playback; not necessarily already heard."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="playback-scheduled">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span>Audio not queued for playback</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio not queued for playback" aria-expanded="false" data-help="Received audio chunks the player could not schedule. Audio intentionally cleared during interruption is not counted here."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="playback-dropped">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span>Silent AI audio chunks</span><button type="button" class="metric-help-trigger" aria-label="Explain Silent AI audio chunks" aria-expanded="false" data-help="Received AI audio chunks containing only zero samples, which may represent silence."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ai-silent-chunks">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span>Assistant interruptions</span><button type="button" class="metric-help-trigger" aria-label="Explain Assistant interruptions" aria-expanded="false" data-help="Times Callio's speech was interrupted so it could listen to the caller."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ai-interruptions">0</output></div>
+                </div>
+              </section>
+              <label class="echo-option"><input id="echo-playback" type="checkbox" disabled /> Play echoed audio (headphones recommended)</label>
+              <p class="helper">Echo playback is available only in microphone test mode. Gemini replies play automatically.</p>
+            </section>
+            <section class="advanced-section" aria-labelledby="advanced-events-heading">
+              <h3 id="advanced-events-heading">WebSocket events</h3>
+              <p class="helper">Recent connection messages and audio frame sizes. Audio contents, transcripts and private caller details are not recorded here.</p>
+              <div class="event-controls">
+                <label>Direction
+                  <select id="event-direction"><option value="all">All</option><option value="in">Received</option><option value="out">Sent</option></select>
+                </label>
+                <label>Message type
+                  <select id="event-kind"><option value="all">All</option><option value="json">Control events</option><option value="binary">Audio frames</option></select>
+                </label>
+                <button id="events-clear" class="text-button" type="button" disabled>Clear events</button>
+              </div>
+              <p id="events-count" class="event-count" aria-live="off">0 shown · 0 buffered (max 200)</p>
+              <ol id="event-list" class="event-list" aria-label="Recent WebSocket events" aria-live="off"></ol>
+              <p class="helper">Newest first · only the last 200 events are kept in memory · no audio payloads are saved.</p>
+            </section>
+            <section class="advanced-section" aria-labelledby="advanced-configuration-heading">
+              <h3 id="advanced-configuration-heading">Configuration</h3>
+              <dl class="advanced-config">
+                <div><dt>WebSocket status</dt><dd id="ws-status" role="status">Disconnected</dd></div>
+                <div><dt>Selected mode</dt><dd id="advanced-mode">Gemini Live</dd></div>
+                <div><dt>Provider</dt><dd id="advanced-provider">Gemini Live</dd></div>
+                <div><dt>WebSocket endpoint</dt><dd id="advanced-endpoint">/ws/live</dd></div>
+                <div><dt>Microphone format</dt><dd>PCM16 · 16 kHz · mono · 20 ms</dd></div>
+                <div><dt>Received audio format</dt><dd id="advanced-received-format">PCM16 · 24 kHz · mono</dd></div>
+              </dl>
+              <p class="helper">Only nonsecret, locally available configuration is displayed.</p>
+            </section>
           </div>
         </details>
+        <div id="metric-help-popover" class="metric-help-popover" role="tooltip" popover="manual"></div>
       </main>
       <footer><span>Callio · Local proof of concept</span><span>Browser simulation only · No real phone connection</span></footer>
     </div>

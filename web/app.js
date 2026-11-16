@@ -6,6 +6,8 @@ import { AudioPlayer } from "./audio-player.js";
 import { TranscriptView } from "./transcript.js?v=ci-13-3";
 import { SetupView, selectedMode } from "./setup.js";
 import { SummaryView } from "./summary.js";
+import { EventInspector } from "./event-inspector.js";
+import { MetricTooltips } from "./metric-tooltip.js";
 
 const modeSelector = document.querySelector("#stream-mode");
 const startButton = document.querySelector("#mic-start");
@@ -28,6 +30,30 @@ const echo = document.querySelector("#echo-playback");
 const micReady = document.querySelector(".mic-ready");
 const callStateLabel = document.querySelector("#call-state");
 const startButtonLabel = startButton.querySelector("span");
+new MetricTooltips({
+  triggers: document.querySelectorAll(".metric-help-trigger"),
+  tooltip: document.querySelector("#metric-help-popover"),
+  advanced: document.querySelector(".advanced"),
+});
+const inspector = new EventInspector({
+  advanced: document.querySelector(".advanced"),
+  list: document.querySelector("#event-list"),
+  count: document.querySelector("#events-count"),
+  clearButton: document.querySelector("#events-clear"),
+  directionFilter: document.querySelector("#event-direction"),
+  kindFilter: document.querySelector("#event-kind"),
+});
+
+function updateAdvancedConfiguration() {
+  const live = selectedMode(modeSelector) === "live";
+  document.querySelector("#advanced-mode").textContent = live ? "Talk to Callio" : "Test my microphone";
+  document.querySelector("#advanced-provider").textContent = live ? "Gemini Live" : "Local echo";
+  document.querySelector("#advanced-endpoint").textContent = live ? "/ws/live" : "/ws/audio";
+  document.querySelector("#advanced-received-format").textContent =
+    live ? "PCM16 · 24 kHz · mono" : "PCM16 · 16 kHz · mono";
+}
+modeSelector.addEventListener("change", updateAdvancedConfiguration);
+updateAdvancedConfiguration();
 
 function setCallState(label, tone = "") {
   callStateLabel.textContent = label;
@@ -225,6 +251,7 @@ startButton.addEventListener("click", async () => {
   summaryView.reset();
   setCallState(live ? "Connecting" : "Echo test", live ? "active" : "");
   callFeedback.textContent = "";
+  inspector.clear();
   handoffControls.hidden = true;
   for (const counter of [chunks, sent, received, dropped, filtered, playbackScheduled, playbackDropped, silentChunks, interruptions]) counter.value = "0";
 
@@ -245,6 +272,9 @@ startButton.addEventListener("click", async () => {
   };
   const socket = new AudioSocket({
     endpoint: live ? "/ws/live" : "/ws/audio",
+    onTraffic: (event) => {
+      if (session === current) inspector.record(event);
+    },
     onChunk: (buffer) => {
       if (session !== current || current.callState === "human_active" || current.callState === "completed") return;
       received.value = String(Number(received.value) + 1);
