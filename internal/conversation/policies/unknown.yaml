@@ -1,0 +1,10 @@
+id: unknown
+description: Reason unclear, personal, delivery, administrative or any call not covered elsewhere.
+required: [purpose, caller_name]
+optional: [company, preferred_dates]
+actions: [request_handoff, record_message]
+instructions: |
+  Politely clarify the purpose of the call before collecting extra details.
+  If the subject becomes clear and matches a category, switch using set_call_context.
+  Gather a name if unknown but accept an explicit refusal.
+  Do not imply that a transfer, delivery or appointment has been completed without confirmation.

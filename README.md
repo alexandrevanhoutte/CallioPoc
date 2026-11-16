@@ -67,7 +67,7 @@ Live audio interruptions and all-zero output chunks are separate from WebSocket 
 
 ## CI-05 interruption smoke test
 
-1. Use **headphones** and select **Gemini Live**. When the greeting begins, say `Attends, je veux parler à Alexandre` before the AI finishes. It should stop and respond to the new request without reconnecting.
+1. Use **headphones** and select **Gemini Live**. When the greeting begins, say `Attends, je veux parler au propriétaire` before the AI finishes. It should stop and respond to the new request without reconnecting.
 2. Ask for a longer explanation and interrupt the response in the middle. Remaining old audio should stop, and the next response should not overlap.
 3. Repeat interruption three times, then click Stop and start again. The microphone and session must close cleanly.
 4. Watch **AI turn interruptions**. It should increase on confirmed Gemini interruptions, while **Chunks dropped (playback)** should normally remain at zero.
@@ -86,7 +86,7 @@ The backend forwards JSON WebSocket events alongside the existing binary PCM16 m
   "segment_id": "caller-1",
   "order": 2,
   "speaker": "CALLER",
-  "text": "Bonjour, je voudrais parler à Alexandre.",
+  "text": "Bonjour, je voudrais parler au propriétaire.",
   "final": true,
   "timestamp": "2026-11-14T12:00:00Z"
 }
@@ -204,3 +204,57 @@ reduced Gemini billing is not guaranteed.
 
 Run `node --test tests/*.test.cjs tests/*.test.mjs`, `go test ./...`,
 `go test -race ./...`, and `go vet ./...`.
+
+## Conversation policies (experimental)
+
+Callio now loads conversation policies from embedded YAML in
+`internal/conversation/policies/`. `general.yaml` contains language and
+turn-taking rules; `recruiting.yaml`, `sales.yaml`, `medical.yaml` and
+`unknown.yaml` define intent descriptions, required fields and authorized
+actions. New policies must have a unique ID, nonempty instructions and recognized
+actions; malformed policies fail at startup.
+
+Gemini uses `set_call_context` to choose/change the category and update fields
+from what the caller said. Go returns the relevant category instructions and
+missing required fields. `request_handoff` is denied until fields are resolved
+or explicitly unavailable. Commercial calls permit only `record_message`,
+which is a **temporary note acknowledged inside the current local session**;
+it is not saved, sent, or displayed as an external delivery. There is no
+calendar availability integration or real appointment creation.
+
+**Important limitation:** field updates originate from model tool calls.
+The Go validator enforces the declared fields and category action rules, but
+cannot independently prove that Gemini heard an answer, that an unavailable
+field was genuinely refused, or that a question was actually asked. Manual
+Gemini Live validation is required; do not treat this as a deterministic
+speech-level guarantee. Provider audio VAD thresholds are unchanged.
+
+### Manual smoke tests
+
+1. Say you want an interview, give only your name and hesitate: no handoff;
+   Callio should ask for the role/position.
+2. Supply the position: a simulated handoff may be requested.
+3. Explicitly refuse to provide a name or say you don't know the role:
+   the agent can proceed after acknowledging the unavailable information.
+4. Sell shoes: clarify the offer and caller name; no live takeover, only
+   a local message note (no external delivery).
+5. Say "I'm a doctor" and provide the general reason: avoid medical details.
+6. Start with an unknown request, then clarify; change category mid-call.
+7. Repeat in French, English and Korean; interrupt, say "euh", and hang up.
+
+### Message acknowledgment and call closing
+
+After a successful `record_message`, Callio should acknowledge the proposal
+naturally (for example, "J'ai noté votre proposition") and invite the caller
+to add more information. It must not automatically claim the message was
+delivered or saved beyond the current session. If the caller directly asks
+whether it was delivered, the assistant must say no. A note being recorded or
+a simple acknowledgment from the caller is **not** an instruction to end the call.
+A tool batch that records a message and requests call completion is rejected.
+
+Manual regression: say "Je veux vendre des chaussures", clarify "chaussures
+Auchan", then give "Camille" as the name. Expect a local note confirmation
+and a brief offer to add details, without an unsolicited technical disclaimer
+or an immediate goodbye. If a transcript contains a phrase the caller did
+not speak, use the Advanced inspector to review the event ordering (no raw audio
+stored); this is distinct from the prompt-level closing guidance.

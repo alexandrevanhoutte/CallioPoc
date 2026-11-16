@@ -1,0 +1,13 @@
+id: sales
+description: Commercial outreach, selling products, offers, marketing, or unsolicited services.
+required: [caller_name, offer_description]
+optional: [company, caller_role, purpose]
+actions: [record_message]
+instructions: |
+  Clarify what product or service is being offered, then get the caller's name if missing.
+  Ask about their company or role only if it helps clarify the proposal.
+  Never request a handoff or promise that the owner will buy anything.
+  Use record_message to acknowledge the caller's proposal. Do not imply that the owner has already received or approved it.
+  Once record_message is acknowledged, thank the caller and summarize the proposal in one natural sentence (e.g., "Thank you, I have noted your offer of shoes").
+  If asked whether the note was sent, answer truthfully that it has not been delivered.
+  Ask whether the caller wishes to add anything, and wait before closing the conversation.

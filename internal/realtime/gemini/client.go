@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 
+	"github.com/alexandrevanhoutte/CallioPoc/internal/conversation"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
 	"google.golang.org/genai"
 )
@@ -60,7 +62,7 @@ func (p *Provider) Open(ctx context.Context) (realtime.VoiceSession, error) {
 		return nil, fmt.Errorf("start Gemini greeting: %w", err)
 	}
 
-	s := &session{live: live}
+	s := &session{live: live, context: conversation.NewState(conversation.Default())}
 	s.stopWatch = context.AfterFunc(ctx, func() { _ = s.Close() })
 	return s, nil
 }
@@ -92,6 +94,10 @@ type session struct {
 	// Only Receive accesses this; the send goroutine never touches it.
 	turns turnState
 	handoff realtime.OnceHandoffDetector
+	context *conversation.State
+	messageRecorded bool
+	notePurpose string
+	noteSummary string
 }
 
 func (s *session) SendAudio(ctx context.Context, pcm16 []byte) error {
@@ -160,30 +166,69 @@ func (s *session) Close() error {
 // handleToolCalls acknowledges every Gemini tool call, including invalid requests.
 // It only emits a validated handoff once per session.
 func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
+	if s.context == nil { s.context = conversation.NewState(conversation.Default()) }
 	responses := make([]*genai.FunctionResponse, 0, len(toolCall.FunctionCalls))
+	contextUpdated := false
+	hasContextCall := false
+	hasMessageCall := false
+	for _, candidate := range toolCall.FunctionCalls {
+		if candidate != nil && candidate.Name == setCallContextName { hasContextCall = true }
+		if candidate != nil && candidate.Name == recordMessageName { hasMessageCall = true }
+	}
 	for _, call := range toolCall.FunctionCalls {
-		if call == nil {
-			continue
-		}
+		if call == nil { continue }
 		slog.Info("Gemini function requested", "name", call.Name, "call_id", call.ID)
 		response := &genai.FunctionResponse{ID: call.ID, Name: call.Name}
 		switch call.Name {
+		case setCallContextName:
+			category, fields, unavailable, err := parseCallContext(call.Args)
+			if err == nil {
+				var policy conversation.Policy
+				policy, err = s.context.Update(category, fields, unavailable)
+				if err == nil {
+					response.Response = map[string]any{
+						"output": "context updated; ask one question at a time for any missing field",
+						"category": policy.ID,
+						"missing_fields": s.context.Missing(),
+						"available_actions": policy.Actions,
+						"instructions": policy.Instructions,
+					}
+					contextUpdated = true
+				}
+			}
+			if err != nil {
+				response.Response = map[string]any{"error": err.Error(), "output": "correct the call context before requesting action"}
+			}
 		case endCallToolName:
-			if call.Args["reason"] != "conversation_finished" {
+			if hasMessageCall {
+				response.Response = map[string]any{"error": "wait for a subsequent caller reply after recording a note; do not conclude this call immediately"}
+			} else if call.Args["reason"] != "conversation_finished" {
 				response.Response = map[string]any{"error": "invalid call end reason"}
 			} else {
-				// Lifecycle handles duplicates; a later request may be valid
-				// if the caller interrupted an earlier farewell.
 				s.turns.pending = append(s.turns.pending, realtime.Event{Type: realtime.EventCallEndRequested})
 				slog.Info("Gemini natural call completion requested", "call_id", call.ID)
 				response.Response = map[string]any{"output": "call completion requested; final audio playback must finish"}
 			}
 		case handoffToolName:
-			request, err := parseHandoff(call.Args)
-			if err != nil {
-				slog.Warn("Gemini handoff arguments rejected", "error", err)
-				response.Response = map[string]any{"error": "invalid handoff arguments"}
-			} else {
+			switch {
+			case hasContextCall || contextUpdated:
+				response.Response = map[string]any{"error": "do not request an action in the same tool batch as updating call context; wait for the next turn"}
+			case s.context.Allow(handoffToolName) != nil:
+				response.Response = map[string]any{"error": s.context.Allow(handoffToolName).Error()}
+			default:
+				request, err := parseHandoff(call.Args)
+				if err != nil {
+					slog.Warn("Gemini handoff arguments rejected", "error", err)
+					response.Response = map[string]any{"error": "invalid handoff arguments"}
+					break
+				}
+				if name, ok := s.context.Value("caller_name"); ok {
+					if request.Context.CallerName != nil && *request.Context.CallerName != name {
+						response.Response = map[string]any{"error": "caller_name does not match collected call context"}
+						break
+					}
+					if request.Context.CallerName == nil { request.Context.CallerName = &name }
+				}
 				emit, err := s.handoff.Detect(request)
 				if err != nil { return err }
 				if emit {
@@ -194,14 +239,30 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 				}
 				response.Response = map[string]any{"output": "handoff request recorded; no transfer performed"}
 			}
+		case recordMessageName:
+			switch {
+			case hasContextCall || contextUpdated:
+				response.Response = map[string]any{"error": "wait until the context update is acknowledged before recording a message"}
+			case s.context.Allow(recordMessageName) != nil:
+				response.Response = map[string]any{"error": s.context.Allow(recordMessageName).Error()}
+			default:
+				purpose, pOK := call.Args["purpose"].(string)
+				summary, sOK := call.Args["summary"].(string)
+				if !pOK || !sOK || strings.TrimSpace(purpose) == "" || strings.TrimSpace(summary) == "" {
+					response.Response = map[string]any{"error": "purpose and summary are required"}
+					break
+				}
+				s.messageRecorded = true
+				s.notePurpose = strings.TrimSpace(purpose)
+				s.noteSummary = strings.TrimSpace(summary)
+				response.Response = map[string]any{"output": "note recorded in temporary memory for this call; you may say you have noted the caller\u0027s proposal, but do not claim delivery or persistence; ask if they wish to add anything and wait for a caller reply"}
+			}
 		default:
 			response.Response = map[string]any{"error": "unsupported tool"}
 		}
 		responses = append(responses, response)
 	}
-	if len(responses) == 0 {
-		return nil
-	}
+	if len(responses) == 0 { return nil }
 	if err := s.live.SendToolResponse(genai.LiveToolResponseInput{FunctionResponses: responses}); err != nil {
 		return fmt.Errorf("send Gemini tool responses: %w", err)
 	}
