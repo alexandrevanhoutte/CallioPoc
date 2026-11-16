@@ -3,12 +3,13 @@ package main
 import (
 	"context"
 	"log/slog"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/alexandrevanhoutte/CallioPoc/internal/config"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/call"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/config"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/httpapi"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime/gemini"
@@ -21,6 +22,7 @@ func main() {
 		logger.Error("load configuration", "error", err)
 		os.Exit(1)
 	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -44,7 +46,7 @@ func main() {
 	}
 
 	router := httpapi.NewRouter(ctx, os.DirFS("web"), provider, summarizer)
-	server := httpapi.NewServer("127.0.0.1:"+cfg.Port, router)
+	server := httpapi.NewServer(net.JoinHostPort(cfg.BindHost, cfg.Port), router)
 	if err := httpapi.Run(ctx, server, logger); err != nil {
 		logger.Error("HTTP server stopped with error", "error", err)
 		os.Exit(1)

@@ -20,11 +20,13 @@ func TestLoad(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("PORT", tc.port)
+			t.Setenv("CALLIO_BIND_HOST", "")
 			t.Setenv("AI_PROVIDER", "gemini")
 			t.Setenv("GEMINI_API_KEY", "")
 			t.Setenv("GEMINI_MODEL", "")
 			t.Setenv("GEMINI_SUMMARY_MODEL", "")
 			t.Setenv("CALL_GREETING_LOCALE", "")
+
 			cfg, err := config.Load()
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("Load() error = %v, wantErr %v", err, tc.wantErr)
@@ -32,11 +34,41 @@ func TestLoad(t *testing.T) {
 			if !tc.wantErr && cfg.Port != tc.want {
 				t.Errorf("Port = %q, want %q", cfg.Port, tc.want)
 			}
+			if !tc.wantErr && cfg.BindHost != "127.0.0.1" {
+				t.Errorf("BindHost = %q, want 127.0.0.1", cfg.BindHost)
+			}
 			if !tc.wantErr && cfg.SummaryModel != "gemini-3.5-flash-lite" {
 				t.Errorf("SummaryModel = %q", cfg.SummaryModel)
 			}
 			if !tc.wantErr && cfg.GeminiModel != "gemini-3.8-live" {
 				t.Errorf("GeminiModel = %q", cfg.GeminiModel)
+			}
+		})
+	}
+}
+
+func TestBindHost(t *testing.T) {
+	t.Setenv("PORT", "8080")
+	t.Setenv("AI_PROVIDER", "gemini")
+	for _, tc := range []struct {
+		name    string
+		host    string
+		want    string
+		wantErr bool
+	}{
+		{name: "local default", want: "127.0.0.1"},
+		{name: "container", host: "0.0.0.0", want: "0.0.0.0"},
+		{name: "ipv6", host: "::1", want: "::1"},
+		{name: "invalid", host: "not-an-ip", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("CALLIO_BIND_HOST", tc.host)
+			cfg, err := config.Load()
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("Load() error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if !tc.wantErr && cfg.BindHost != tc.want {
+				t.Errorf("BindHost = %q, want %q", cfg.BindHost, tc.want)
 			}
 		})
 	}
@@ -58,13 +90,21 @@ func TestGreetingLocaleConfig(t *testing.T) {
 			t.Setenv("CALL_GREETING_LOCALE", locale)
 			cfg, err := config.Load()
 			if locale == "es-ES" {
-				if err == nil { t.Fatal("unsupported locale must fail") }
+				if err == nil {
+					t.Fatal("unsupported locale must fail")
+				}
 				return
 			}
-			if err != nil { t.Fatal(err) }
+			if err != nil {
+				t.Fatal(err)
+			}
 			want := locale
-			if want == "" { want = "fr-FR" }
-			if cfg.GreetingLocale.String() != want { t.Fatalf("got %q, want %q", cfg.GreetingLocale, want) }
+			if want == "" {
+				want = "fr-FR"
+			}
+			if cfg.GreetingLocale.String() != want {
+				t.Fatalf("got %q, want %q", cfg.GreetingLocale, want)
+			}
 		})
 	}
 }
@@ -75,7 +115,9 @@ func TestSummaryModelOverride(t *testing.T) {
 	t.Setenv("CALL_GREETING_LOCALE", "fr-FR")
 	t.Setenv("GEMINI_SUMMARY_MODEL", "gemini-3.5-flash-lite-lite")
 	cfg, err := config.Load()
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if cfg.SummaryModel != "gemini-3.5-flash-lite-lite" {
 		t.Fatalf("wrong summary model: %q", cfg.SummaryModel)
 	}
