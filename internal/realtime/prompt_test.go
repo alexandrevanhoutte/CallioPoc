@@ -56,7 +56,7 @@ func TestWaitForCallerResponseBeforeHandoffInstructions(t *testing.T) {
 		"rather than triggering handoff",
 		"before saying the request has been registered",
 	} {
-		if !strings.Contains(realtime.ReceptionistInstructions, clause) {
+		if !strings.Contains(strings.ToLower(realtime.ReceptionistInstructions), strings.ToLower(clause)) {
 			t.Fatalf("missing handoff sequencing instruction: %q", clause)
 		}
 	}

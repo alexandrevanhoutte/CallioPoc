@@ -106,3 +106,43 @@ test("live WebSocket sends only allowed lifecycle commands", async () => {
   assert.equal(echo.sendControl("accept"), false);
   assert.equal(echo.sendControl("audio_stream_end"), false);
 });
+
+
+test("traffic hooks expose only message metadata without affecting streaming", async () => {
+  const traffic = [];
+  const connection = new AudioSocket({
+    endpoint: "/ws/live", onChunk() {}, onEvent() {}, onDisconnect() {},
+    onTraffic: event => traffic.push(event),
+  });
+  const connected = connection.connect();
+  const ws = FakeWebSocket.instances.at(-1);
+  ws.open();
+  await connected;
+
+  assert.equal(connection.send(new Int16Array(320)), true);
+  assert.equal(connection.sendControl("end_call"), true);
+  ws.receive(new ArrayBuffer(960));
+  ws.receive(JSON.stringify({ type: "transcript", text: "private caller message" }));
+  assert.deepEqual(traffic.map(({ direction, kind, type, size }) => ({ direction, kind, type, size })), [
+    { direction: "out", kind: "binary", type: undefined, size: 640 },
+    { direction: "out", kind: "json", type: "end_call", size: 19 },
+    { direction: "in", kind: "binary", type: undefined, size: 960 },
+    { direction: "in", kind: "json", type: "transcript", size: new TextEncoder().encode(JSON.stringify({ type: "transcript", text: "private caller message" })).byteLength },
+  ]);
+  assert.ok(traffic.every(event => typeof event.timestamp === "number"));
+  assert.doesNotMatch(JSON.stringify(traffic), /private caller message/);
+  connection.close();
+});
+
+test("a failing diagnostic callback cannot interrupt the audio socket", async () => {
+  const connection = new AudioSocket({
+    onChunk() {}, onDisconnect() {}, onTraffic() { throw new Error("inspector failed"); },
+  });
+  const connected = connection.connect();
+  const ws = FakeWebSocket.instances.at(-1);
+  ws.open();
+  await connected;
+  assert.equal(connection.send(new Int16Array(320)), true);
+  ws.receive(new ArrayBuffer(640));
+  connection.close();
+});

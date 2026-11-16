@@ -3,12 +3,19 @@
 const MAX_BUFFERED_BYTES = 32 * 1024;
 
 export class AudioSocket {
-  constructor({ endpoint = "/ws/audio", onChunk, onEvent = () => {}, onDisconnect }) {
+  constructor({ endpoint = "/ws/audio", onChunk, onEvent = () => {}, onDisconnect, onTraffic = () => {} }) {
     this.endpoint = endpoint;
     this.onChunk = onChunk;
     this.onEvent = onEvent;
     this.onDisconnect = onDisconnect;
+    this.onTraffic = onTraffic;
     this.socket = null;
+  }
+
+  // Observability must never break the realtime audio path.
+  reportTraffic(event) {
+    try { this.onTraffic({ timestamp: Date.now(), ...event }); }
+    catch { /* Ignore failures in optional diagnostics. */ }
   }
 
   connect() {
@@ -59,11 +66,14 @@ export class AudioSocket {
             this.onDisconnect(new Error("Unexpected echo audio chunk size."));
             return;
           }
+          this.reportTraffic({ direction: "in", kind: "binary", size: data.byteLength });
           this.onChunk(data);
         } else if (typeof data === "string") {
           try {
             const event = JSON.parse(data);
             if (typeof event.type !== "string") throw new Error("Missing event type");
+            this.reportTraffic({ direction: "in", kind: "json", type: event.type,
+              size: new TextEncoder().encode(data).byteLength });
             this.onEvent(event);
           } catch {
             this.onDisconnect(new Error("Invalid server event."));
@@ -79,6 +89,7 @@ export class AudioSocket {
     if (!(chunk instanceof Int16Array) || chunk.byteLength !== 640) return false;
     if (socket.bufferedAmount > MAX_BUFFERED_BYTES) return false;
     socket.send(chunk);
+    this.reportTraffic({ direction: "out", kind: "binary", size: chunk.byteLength });
     return true;
   }
 
@@ -86,7 +97,10 @@ export class AudioSocket {
     const socket = this.socket;
     if (this.endpoint !== "/ws/live" || !socket || socket.readyState !== WebSocket.OPEN) return false;
     if (!["accept", "decline", "no_answer", "end_call", "playback_finished", "audio_stream_end"].includes(type)) return false;
-    socket.send(JSON.stringify({ type }));
+    const message = JSON.stringify({ type });
+    socket.send(message);
+    this.reportTraffic({ direction: "out", kind: "json", type,
+      size: new TextEncoder().encode(message).byteLength });
     return true;
   }
 
