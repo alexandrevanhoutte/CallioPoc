@@ -20,8 +20,10 @@ func TestEndOfSpeechTimeout(t *testing.T) {
 
 func TestMultilingualGeminiConfig(t *testing.T) {
 	cfg := liveConfig()
-	if len(cfg.Tools) != 2 || cfg.Tools[0].FunctionDeclarations[0].Name != handoffToolName ||
-		cfg.Tools[1].FunctionDeclarations[0].Name != endCallToolName {
+	if len(cfg.Tools) != 4 || cfg.Tools[0].FunctionDeclarations[0].Name != handoffToolName ||
+		cfg.Tools[1].FunctionDeclarations[0].Name != endCallToolName ||
+		cfg.Tools[2].FunctionDeclarations[0].Name != setCallContextName ||
+		cfg.Tools[3].FunctionDeclarations[0].Name != recordMessageName {
 		t.Fatal("both Gemini functions must be registered")
 	}
 	if !strings.Contains(cfg.SystemInstruction.Parts[0].Text, "switch with them immediately") {

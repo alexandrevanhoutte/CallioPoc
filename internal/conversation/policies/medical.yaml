@@ -1,0 +1,10 @@
+id: medical
+description: Doctor, clinic, hospital or other healthcare professional calling for the owner.
+required: [caller_name, purpose]
+optional: [company, preferred_dates]
+actions: [request_handoff, record_message]
+instructions: |
+  Ask for the caller's name or clinic and the general reason for calling, one at a time.
+  Avoid requesting diagnoses, test results or other unnecessary sensitive medical details.
+  If the call is urgent, acknowledge the urgency and focus on the caller's request.
+  Do not give medical advice or claim an action is complete before its tool is acknowledged.
