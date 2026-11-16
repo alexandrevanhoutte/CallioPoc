@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/alexandrevanhoutte/CallioPoc/internal/call"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/logging"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
 	"github.com/coder/websocket"
 )
@@ -41,6 +41,7 @@ type liveSession struct {
 	voice     realtime.VoiceSession
 	lifecycle *call.Lifecycle
 	summarizer call.Summarizer
+	l          logging.Logger
 	transcript realtime.Transcript
 	handoff *realtime.HandoffRequest
 
@@ -59,6 +60,7 @@ type liveSession struct {
 // The live protocol uploads 16 kHz mono PCM16 (640 bytes) and receives
 // 24 kHz PCM16 audio plus JSON control/transcript messages.
 func audioLive(appCtx context.Context, provider realtime.VoiceProvider, summarizer call.Summarizer) http.HandlerFunc {
+	logger := logging.For("httpapi.live")
 	return func(w http.ResponseWriter, r *http.Request) {
 		if provider == nil {
 			http.Error(w, "Live provider is not configured", http.StatusServiceUnavailable)
@@ -79,12 +81,12 @@ func audioLive(appCtx context.Context, provider realtime.VoiceProvider, summariz
 		voice, err := provider.Open(ctx)
 		if err != nil {
 			_ = conn.Close(websocket.StatusInternalError, "AI session could not start")
-			slog.Warn("live session opening failed", "error", err)
+			logger.Warn("live session opening failed", "error", err)
 			return
 		}
 		defer voice.Close()
-		slog.Info("live session started")
-		defer slog.Info("live session closed")
+		logger.Info("live session started")
+		defer logger.Info("live session closed")
 
 		// Cancellation must unblock both WebSocket reads and provider Receive.
 		stopSession := context.AfterFunc(ctx, func() {
@@ -97,7 +99,8 @@ func audioLive(appCtx context.Context, provider realtime.VoiceProvider, summariz
 			conn:         conn,
 			voice:        voice,
 			lifecycle:    call.NewLifecycle(call.MockHandoff{}),
-			summarizer: summarizer,
+			summarizer:   summarizer,
+			l:            logger,
 			lastActivity: time.Now(),
 		}
 		go session.watchInactivity(ctx, configuredIdleTimeout())
@@ -126,7 +129,7 @@ func audioLive(appCtx context.Context, provider realtime.VoiceProvider, summariz
 				continue
 			}
 			if result.err != nil && !errors.Is(result.err, context.Canceled) && appCtx.Err() == nil {
-				slog.Debug("live stream ended", "source", result.source, "error", result.err)
+				logger.Debug("live stream ended", "source", result.source, "error", result.err)
 			}
 			break
 		}
@@ -229,7 +232,7 @@ func (s *liveSession) readBrowser(ctx context.Context) error {
 			if err := s.lifecycle.Complete(); err != nil {
 				return err
 			}
-			slog.Info("call completed after browser playback", "reason", reason.String())
+			s.l.Info("call completed after browser playback", "reason", reason.String())
 			if err := s.sendState(ctx, reason.String()); err != nil {
 				return err
 			}
@@ -237,7 +240,7 @@ func (s *liveSession) readBrowser(ctx context.Context) error {
 		case "accept":
 			actionErr = s.lifecycle.Accept(ctx)
 			if actionErr == nil {
-				slog.Info("simulated human takeover accepted")
+				s.l.Info("simulated human takeover accepted")
 				_ = s.voice.Close()
 				actionErr = s.sendState(ctx, "accepted")
 			}
@@ -252,17 +255,17 @@ func (s *liveSession) readBrowser(ctx context.Context) error {
 				if err := s.sendState(ctx, message.Type); err != nil {
 					return err
 				}
-				slog.Info("simulated handoff unresolved", "outcome", message.Type)
+				s.l.Info("simulated handoff unresolved", "outcome", message.Type)
 				if notifier, ok := s.voice.(realtime.HandoffOutcomeNotifier); ok {
 					if err := notifier.NotifyHandoffOutcome(ctx, message.Type); err != nil {
-						slog.Warn("failed to notify voice provider of handoff outcome", "error", err)
+						s.l.Warn("failed to notify voice provider of handoff outcome", "error", err)
 					}
 				}
 			}
 		case "end_call":
 			actionErr = s.lifecycle.Complete()
 			if actionErr == nil {
-				slog.Info("simulated call completed")
+				s.l.Info("simulated call completed")
 				if err := s.sendState(ctx, "ended"); err != nil {
 					return err
 				}
@@ -272,7 +275,7 @@ func (s *liveSession) readBrowser(ctx context.Context) error {
 			actionErr = errors.New("unknown control command")
 		}
 		if actionErr != nil {
-			slog.Debug("live control command rejected", "action", message.Type, "error", actionErr)
+			s.l.Debug("live control command rejected", "action", message.Type, "error", actionErr)
 			if err := s.send(ctx, struct {
 				Type   string `json:"type"`
 				Action string `json:"action"`
@@ -305,7 +308,7 @@ func (s *liveSession) readModel(ctx context.Context) error {
 			}
 			if event.TurnID != 0 && event.TurnID != lastTurn {
 				lastTurn = event.TurnID
-				slog.Info("assistant turn started", "turn_id", lastTurn)
+				s.l.Info("assistant turn started", "turn_id", lastTurn)
 			}
 			s.mu.Lock()
 			s.aiSpeaking = true
@@ -369,7 +372,7 @@ func (s *liveSession) readModel(ctx context.Context) error {
 			copyHandoff := *event.Handoff
 			s.handoff = &copyHandoff
 			s.mu.Unlock()
-			slog.Info("handoff_required sent to browser", "reason", event.Handoff.Reason.String())
+			s.l.Info("handoff_required sent to browser", "reason", event.Handoff.Reason.String())
 			if err := s.sendState(ctx, "requested"); err != nil {
 				return err
 			}
@@ -385,12 +388,12 @@ func (s *liveSession) readModel(ctx context.Context) error {
 				if event.TurnID > interruptedTurn {
 					interruptedTurn = event.TurnID
 				}
-				slog.Info("assistant turn interrupted", "turn_id", event.TurnID)
+				s.l.Info("assistant turn interrupted", "turn_id", event.TurnID)
 			} else {
 				if event.TurnID != 0 && event.TurnID <= interruptedTurn {
 					continue
 				}
-				slog.Info("assistant turn completed", "turn_id", event.TurnID)
+				s.l.Info("assistant turn completed", "turn_id", event.TurnID)
 			}
 			if err := s.send(ctx, struct {
 				Type string `json:"type"`
@@ -434,7 +437,7 @@ func (s *liveSession) sendSummary(ctx context.Context, reason call.EndReason) er
 	summary, err := s.summarizer.Summarize(summaryCtx, input)
 	if err == nil { err = summary.Validate() }
 	if err != nil {
-		slog.Warn("call summary unavailable", "error", err)
+		s.l.Warn("call summary unavailable", "error", err)
 		return s.send(ctx, struct {
 			Type string `json:"type"`
 			Error string `json:"error"`
@@ -469,12 +472,12 @@ func (s *liveSession) requestEnd(ctx context.Context, reason call.EndReason) err
 	if reason == call.EndCallerFinished {
 		s.farewell = time.AfterFunc(farewellGrace, func() {
 			if err := s.finishAudio(ctx, version); err != nil && ctx.Err() == nil {
-				slog.Debug("failed to send call_finishing", "error", err)
+				s.l.Debug("failed to send call_finishing", "error", err)
 			}
 		})
 	}
 	s.mu.Unlock()
-	slog.Info("call completion initiated", "reason", reason.String())
+	s.l.Info("call completion initiated", "reason", reason.String())
 	if reason == call.EndIdleTimeout {
 		return s.finishAudio(ctx, 0)
 	}
@@ -497,7 +500,7 @@ func (s *liveSession) cancelEnd(ctx context.Context) error {
 	s.endVersion++
 	s.endReason = call.EndUnknown
 	s.mu.Unlock()
-	slog.Info("natural call completion cancelled by interruption")
+	s.l.Info("natural call completion cancelled by interruption")
 	return s.send(ctx, struct {
 		Type string `json:"type"`
 	}{Type: "call_end_cancelled"})
@@ -548,7 +551,7 @@ func (s *liveSession) watchInactivity(ctx context.Context, timeout time.Duration
 				continue
 			}
 			if err := s.requestEnd(ctx, call.EndIdleTimeout); err != nil && ctx.Err() == nil {
-				slog.Debug("failed to finish idle call", "error", err)
+				s.l.Debug("failed to finish idle call", "error", err)
 			}
 			// Continue monitoring if a caller interruption cancels completion.
 		}
@@ -562,7 +565,7 @@ func configuredIdleTimeout() time.Duration {
 	}
 	seconds, err := strconv.Atoi(value)
 	if err != nil || seconds < 10 || seconds > 3600 {
-		slog.Warn("invalid CALL_IDLE_TIMEOUT_SECONDS; using default", "value", value)
+		logging.For("httpapi.live").Warn("invalid CALL_IDLE_TIMEOUT_SECONDS; using default", "value", value)
 		return defaultIdleTimeout
 	}
 	return time.Duration(seconds) * time.Second

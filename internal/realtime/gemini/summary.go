@@ -6,11 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"time"
 	"strings"
 
 	"github.com/alexandrevanhoutte/CallioPoc/internal/call"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/logging"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
 	"google.golang.org/genai"
 )
@@ -20,6 +20,7 @@ import (
 type Summarizer struct {
 	client *genai.Client
 	model  string
+	l      logging.Logger
 }
 
 func NewSummarizer(ctx context.Context, apiKey, model string) (*Summarizer, error) {
@@ -32,7 +33,7 @@ func NewSummarizer(ctx context.Context, apiKey, model string) (*Summarizer, erro
 	if err != nil {
 		return nil, fmt.Errorf("initialize summarizer: %w", err)
 	}
-	return &Summarizer{client: client, model: model}, nil
+	return &Summarizer{client: client, model: model, l: logging.For("gemini.summary")}, nil
 }
 
 func (s *Summarizer) Summarize(ctx context.Context, input call.SummaryInput) (call.Summary, error) {
@@ -102,7 +103,7 @@ func (s *Summarizer) Summarize(ctx context.Context, input call.SummaryInput) (ca
 		if !retryableSummaryError(err) || attempt == 1 {
 			return call.Summary{}, fmt.Errorf("Gemini summary generation: %w", err)
 		}
-		slog.Warn("transient Gemini summary failure; retrying once", "error", err)
+		s.l.Warn("transient Gemini summary failure; retrying once", "error", err)
 		timer := time.NewTimer(time.Second)
 		select {
 		case <-timer.C:

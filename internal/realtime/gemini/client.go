@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"sync"
 
 	"github.com/alexandrevanhoutte/CallioPoc/internal/conversation"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/logging"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
 	"google.golang.org/genai"
 )
@@ -62,7 +62,7 @@ func (p *Provider) Open(ctx context.Context) (realtime.VoiceSession, error) {
 		return nil, fmt.Errorf("start Gemini greeting: %w", err)
 	}
 
-	s := &session{live: live, context: conversation.NewState(conversation.Default())}
+	s := &session{live: live, context: conversation.NewState(conversation.Default()), l: logging.For("gemini.live")}
 	s.stopWatch = context.AfterFunc(ctx, func() { _ = s.Close() })
 	return s, nil
 }
@@ -90,6 +90,7 @@ type session struct {
 	stopWatch func() bool
 	once      sync.Once
 	closeErr  error
+	l         logging.Logger
 
 	// Only Receive accesses this; the send goroutine never touches it.
 	turns turnState
@@ -139,7 +140,7 @@ func (s *session) Receive(ctx context.Context) (realtime.Event, error) {
 			continue
 		}
 		if message.ToolCall != nil {
-			slog.Info("Gemini tool call message received", "calls", len(message.ToolCall.FunctionCalls))
+			s.l.Info("Gemini tool call message received", "calls", len(message.ToolCall.FunctionCalls))
 			if err := s.handleToolCalls(message.ToolCall); err != nil {
 				return realtime.Event{}, err
 			}
@@ -177,7 +178,7 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 	}
 	for _, call := range toolCall.FunctionCalls {
 		if call == nil { continue }
-		slog.Info("Gemini function requested", "name", call.Name, "call_id", call.ID)
+		s.l.Info("Gemini function requested", "name", call.Name, "call_id", call.ID)
 		response := &genai.FunctionResponse{ID: call.ID, Name: call.Name}
 		switch call.Name {
 		case setCallContextName:
@@ -206,7 +207,7 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 				response.Response = map[string]any{"error": "invalid call end reason"}
 			} else {
 				s.turns.pending = append(s.turns.pending, realtime.Event{Type: realtime.EventCallEndRequested})
-				slog.Info("Gemini natural call completion requested", "call_id", call.ID)
+				s.l.Info("Gemini natural call completion requested", "call_id", call.ID)
 				response.Response = map[string]any{"output": "call completion requested; final audio playback must finish"}
 			}
 		case handoffToolName:
@@ -218,7 +219,7 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 			default:
 				request, err := parseHandoff(call.Args)
 				if err != nil {
-					slog.Warn("Gemini handoff arguments rejected", "error", err)
+					s.l.Warn("Gemini handoff arguments rejected", "error", err)
 					response.Response = map[string]any{"error": "invalid handoff arguments"}
 					break
 				}
@@ -232,10 +233,10 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 				emit, err := s.handoff.Detect(request)
 				if err != nil { return err }
 				if emit {
-					slog.Info("handoff accepted", "reason", request.Reason.String(), "call_id", call.ID)
+					s.l.Info("handoff accepted", "reason", request.Reason.String(), "call_id", call.ID)
 					s.turns.pending = append(s.turns.pending, realtime.Event{Type: realtime.EventHandoffRequired, Handoff: &request})
 				} else {
-					slog.Info("duplicate handoff ignored", "call_id", call.ID)
+					s.l.Info("duplicate handoff ignored", "call_id", call.ID)
 				}
 				response.Response = map[string]any{"output": "handoff request recorded; no transfer performed"}
 			}

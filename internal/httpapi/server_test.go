@@ -2,8 +2,6 @@ package httpapi_test
 
 import (
 	"context"
-	"io"
-	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -11,10 +9,11 @@ import (
 	"time"
 
 	"github.com/alexandrevanhoutte/CallioPoc/internal/httpapi"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/logging"
 )
 
 func TestRun(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := testLogger{}
 
 	t.Run("listen error", func(t *testing.T) {
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -62,3 +61,15 @@ func TestRun(t *testing.T) {
 		}
 	})
 }
+
+
+// testLogger proves that HTTP does not depend on slog or a concrete logger.
+type testLogger struct{}
+
+func (testLogger) Debug(string, ...any) {}
+func (testLogger) Info(string, ...any)  {}
+func (testLogger) Warn(string, ...any)  {}
+func (testLogger) Error(string, ...any) {}
+func (l testLogger) With(...any) logging.Logger { return l }
+
+var _ logging.Logger = testLogger{}

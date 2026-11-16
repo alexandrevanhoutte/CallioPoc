@@ -367,6 +367,38 @@ If extending this to a production service, the first steps would include authent
 - **Need a different host port?** Use `-p 127.0.0.1:9090:8080` and open `http://localhost:9090`.
 - **Need a different container port?** Set `PORT` in `.env` and update the right-hand side of the `-p` mapping accordingly.
 
+## Backend logging
+
+Callio writes structured JSON logs to stdout through an application-owned
+`internal/logging.Logger` interface. The `slog` adapter is private to
+`internal/logging/`; other packages must not import `log/slog` directly.
+
+Set `LOG_LEVEL` in `.env` to `debug`, `info` (default), `warn`, or
+`error`. Unknown values fail startup with a configuration error.
+Each service holds and reuses its own logger, tagged with a component:
+
+```go
+type Service struct {
+    l logging.Logger
+}
+
+func NewService() *Service {
+    return &Service{l: logging.For("example")}
+}
+
+func (s *Service) Start() {
+    s.l.Info("service started", "state", "active")
+}
+```
+
+Use `logging.L()` for the root logger and `logging.For("component")`
+for a component logger. `With("key", value)` returns a derived logger
+without changing its parent. Tests can use `logging.New(writer, "debug")`
+or inject a fake `logging.Logger` implementation. The output format and
+log level are configured once in `logging.Init(...)`, so a future switch
+away from `slog` requires changing only the logging kit. Never log API
+keys, audio payloads, full transcripts or caller personal details.
+
 ## License
 
 No license has been selected yet. Until a license file is added, the repository should not be assumed to grant permission to reuse or redistribute the code.
