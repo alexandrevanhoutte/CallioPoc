@@ -100,7 +100,7 @@ git clone https://github.com/alexandrevanhoutte/CallioPoc.git
 cd CallioPoc
 cp .env.example .env
 # Optional: add GEMINI_API_KEY to .env for Gemini Live
-go run ./cmd/callio
+go run -mod=vendor ./cmd/callio
 ```
 
 Open **http://localhost:8080**. By default the native Go server listens only on `127.0.0.1`, and process environment variables override `.env`.
@@ -328,17 +328,35 @@ internal/realtime/gemini/# Gemini Live and summary adapters
 internal/call/           # lifecycle state machine, handoff, summary contract
 web/                    # static browser demo, microphone, playback, UI
 tests/                  # browser-side JavaScript unit tests
+vendor/                 # committed Go dependencies (generated)
 Dockerfile              # multi-stage container build
 ```
 
-## Tests
+## Go dependency vendoring
 
-From the repository root:
+Go dependencies are committed in `vendor/` (including `vendor/modules.txt`), so running the Go application, tests and Docker build does not require fetching modules from the network. A **Go 1.23+ toolchain must already be installed** for local commands. The Docker build still needs access to its base images and Alpine packages unless those are cached.
+
+With Go 1.14+, the toolchain normally selects the vendor tree automatically when the `go.mod` directive and `vendor/modules.txt` are compatible. This project uses `-mod=vendor` explicitly so missing/out-of-sync vendored files fail immediately.
+
+To update or add a dependency (network required for this maintenance step):
 
 ```bash
-go test ./...
-go test -race ./...
-go vet ./...
+go get example.com/module@version
+go mod tidy
+go mod vendor
+git add go.mod go.sum vendor/
+```
+
+Always commit updated `vendor/` together with any `go.mod` / `go.sum` changes. Avoid editing files inside `vendor/` directly. Vendoring makes the repository larger, but supports reproducible and offline Go builds.
+
+## Tests
+
+From the repository root, with no module downloads:
+
+```bash
+GOPROXY=off go test -mod=vendor ./...
+GOPROXY=off go test -mod=vendor -race ./...
+GOPROXY=off go vet -mod=vendor ./...
 node --test tests/*.test.cjs tests/*.test.mjs   # optional: Node.js 22+
 ```
 

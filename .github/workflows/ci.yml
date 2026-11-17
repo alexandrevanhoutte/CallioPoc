@@ -21,20 +21,21 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          # Retain the Go build cache; module downloads are disabled below.
           cache: true
 
       - name: Run Go tests
-        run: go test ./...
+        run: GOPROXY=off go test -mod=vendor ./...
 
       - name: Run race detector
         if: ${{ !cancelled() }}
         env:
           CGO_ENABLED: "1"
-        run: go test -race ./...
+        run: GOPROXY=off go test -mod=vendor -race ./...
 
       - name: Run go vet
         if: ${{ !cancelled() }}
-        run: go vet ./...
+        run: GOPROXY=off go vet -mod=vendor ./...
 
   javascript:
     name: JavaScript
