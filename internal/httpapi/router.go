@@ -10,12 +10,12 @@ import (
 )
 
 // NewRouter registers HTTP routes. Dependencies are provided by the caller.
-func NewRouter(appCtx context.Context, webFiles fs.FS, provider realtime.VoiceProvider, summarizer call.Summarizer) http.Handler {
+func NewRouter(appCtx context.Context, webFiles fs.FS, provider realtime.VoiceProvider, summarizer call.Summarizer, defaultLocale realtime.Locale) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", health)
-	mux.HandleFunc("GET /capabilities", capabilities(provider != nil))
+	mux.HandleFunc("GET /capabilities", capabilities(provider != nil, defaultLocale))
 	mux.Handle("GET /ws/audio", audioEcho(appCtx))
-	mux.Handle("GET /ws/live", audioLive(appCtx, provider, summarizer))
+	mux.Handle("GET /ws/live", audioLive(appCtx, provider, summarizer, defaultLocale))
 	mux.Handle("GET /", http.FileServer(http.FS(webFiles)))
 	return mux
 }

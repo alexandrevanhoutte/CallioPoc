@@ -70,7 +70,7 @@ type Event struct {
 
 // VoiceProvider opens one live conversation for each browser session.
 type VoiceProvider interface {
-	Open(ctx context.Context) (VoiceSession, error)
+	Open(ctx context.Context, locale Locale) (VoiceSession, error)
 }
 
 // VoiceSession permits simultaneous SendAudio and Receive calls.

@@ -1115,7 +1115,7 @@ footer {
   background: #0e1829;
 }
 .event-list:empty::before {
-  content: "No WebSocket events yet. Start a call to see connection activity.";
+  content: attr(data-empty-message);
   display: block;
   padding: 20px 16px;
   color: var(--dim);
@@ -1164,4 +1164,14 @@ footer {
     font-size: .68rem;
   }
   .event-controls button { margin-left: 0; }
+}
+
+/* Compact language switcher. Reflows with connection status on narrow screens. */
+.header-controls { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
+.language-select { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: .8rem; }
+.language-select select { font: inherit; color: var(--text); background: var(--panel-soft); border: 1px solid var(--border-strong); border-radius: 9px; min-height: 38px; padding: 6px 9px; }
+.language-select select:disabled { opacity: .55; cursor: not-allowed; }
+@media (max-width: 740px) {
+  .site-header { flex-wrap: wrap; padding: 15px 0; }
+  .header-controls { width: 100%; justify-content: space-between; }
 }

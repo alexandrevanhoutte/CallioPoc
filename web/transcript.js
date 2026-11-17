@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 // State is separate from DOM rendering so finalized segments are easy to
 // consume for the later summary and persistence tickets.
 export class TranscriptStore {
@@ -81,23 +83,31 @@ export class TranscriptView {
     this.store = new TranscriptStore();
     this.rows = new Map();
     this.handoffRow = null;
+    this.handoffEvent = null;
+    this.handoffOutcome = null;
+    this.statusKey = "transcript.noConversation";
+  }
+
+  setStatus(key) {
+    this.statusKey = key;
+    this.status.textContent = t(key);
   }
 
   update(event) {
     const segment = this.store.upsert(event);
     if (!segment) return;
-    const label = this.store.handoff ? "Handoff requested" : "Live transcript";
-    if (this.status.textContent !== label) this.status.textContent = label;
+    const label = this.store.handoff ? "handoff.requested" : "transcript.live";
+    if (this.statusKey !== label) this.setStatus(label);
     let row = this.rows.get(segment.id);
     if (!row) {
       row = document.createElement("div");
       row.className = `transcript-segment ${segment.speaker === "CALLER" ? "is-caller" : "is-ai"}`;
       const speaker = document.createElement("strong");
-      speaker.textContent = segment.speaker === "AI" ? "Callio" : "Caller";
+      speaker.textContent = segment.speaker === "AI" ? "Callio" : t("fields.caller");
       const text = document.createElement("p");
       const pending = document.createElement("span");
       pending.className = "transcript-progress";
-      pending.textContent = "Transcribing…";
+      pending.textContent = t("transcript.transcribing");
       pending.setAttribute("aria-hidden", "true");
       row.append(speaker, text, pending);
       this.rows.set(segment.id, row);
@@ -108,55 +118,83 @@ export class TranscriptView {
     this.renderTimeline();
     // Provisional updates can arrive rapidly. Announce finalized text only.
     if (segment.final && this.announcement) {
-      this.announcement.textContent = `${segment.speaker === "AI" ? "Callio" : "Caller"}: ${segment.text}`;
+      this.announcement.textContent = `${segment.speaker === "AI" ? "Callio" : t("fields.caller")}: ${segment.text}`;
     }
   }
 
   addHandoff(event) {
     if (!this.store.addHandoff(event)) return;
+    this.handoffEvent = event;
+    this.handoffOutcome = null;
+    this.renderHandoff();
+    this.setStatus("handoff.requested");
+    this.renderTimeline();
+  }
+
+  renderHandoff() {
+    const event = this.handoffEvent;
+    if (!event) return;
     const context = event.context;
     const row = document.createElement("div");
     row.className = "handoff-card";
     const title = document.createElement("strong");
-    title.textContent = "Simulated handoff requested";
+    title.textContent = t("handoff.simulatedTitle");
     row.append(title);
     const detail = (label, value) => {
       if (typeof value !== "string" || value.length === 0) return;
       const line = document.createElement("p");
-      line.textContent = `${label}: ${value}`;
+      line.textContent = t(label) + ": " + value;
       row.append(line);
     };
-    detail("Reason", event.reason === "owner_requested"
-      ? "Caller asked for the owner" : "Callio needs assistance");
-    detail("Caller", context.caller_name);
-    detail("Company", context.company);
-    detail("Purpose", context.purpose);
-    detail("Summary", context.summary);
-    detail("Email", context.email);
-    detail("Phone", context.phone_number);
+    detail("fields.reason", event.reason === "owner_requested"
+      ? t("handoff.reasonOwner") : t("handoff.reasonAi"));
+    detail("fields.caller", context.caller_name);
+    detail("fields.company", context.company);
+    detail("fields.purpose", context.purpose);
+    detail("fields.summary", context.summary);
+    detail("fields.email", context.email);
+    detail("fields.phone", context.phone_number);
     const note = document.createElement("p");
     note.className = "handoff-result";
-    note.textContent = "Awaiting your decision — no real transfer will occur.";
+    const messages = {
+      accepted: "handoff.accepted",
+      decline: "handoff.declined",
+      no_answer: "handoff.noAnswerContinues",
+    };
+    note.textContent = t(messages[this.handoffOutcome] || "handoff.awaitingDecision");
     row.append(note);
     this.handoffRow = row;
-    this.status.textContent = "Handoff requested";
-    this.renderTimeline();
   }
 
   // Called only after the backend confirms the simulated handoff outcome.
   resolveHandoff(outcome) {
-    const status = this.handoffRow?.querySelector(".handoff-result");
-    if (!status) return;
+    if (!this.handoffEvent || !["accepted", "decline", "no_answer"].includes(outcome)) return;
+    this.handoffOutcome = outcome;
     const messages = {
-      accepted: "Human takeover accepted (simulation only).",
-      decline: "Takeover declined; Callio will continue.",
-      no_answer: "No answer simulated; Callio will continue.",
+      accepted: "handoff.accepted",
+      decline: "handoff.declined",
+      no_answer: "handoff.noAnswerContinues",
     };
-    if (messages[outcome]) status.textContent = messages[outcome];
+    const note = this.handoffRow?.querySelector(".handoff-result");
+    if (note) note.textContent = t(messages[outcome]);
+  }
+
+  refreshLocale() {
+    this.setStatus(this.statusKey);
+    for (const [id, row] of this.rows) {
+      const segment = this.store.segments.get(id);
+      if (!segment) continue;
+      row.querySelector("strong").textContent = segment.speaker === "AI" ? "Callio" : t("fields.caller");
+      row.querySelector(".transcript-progress").textContent = t("transcript.transcribing");
+    }
+    if (this.handoffEvent) {
+      this.renderHandoff();
+      this.renderTimeline();
+    }
   }
 
   begin(live) {
-    this.status.textContent = live ? "Listening for speech…" : "Echo test — no transcript in this mode";
+    this.setStatus(live ? "transcript.listening" : "transcript.echoNotAvailable");
   }
 
   renderTimeline() {
@@ -170,17 +208,19 @@ export class TranscriptView {
   }
 
   finish() {
-    this.status.textContent = this.store.segments.size || this.store.handoff
-      ? "Conversation ended — transcript retained until the next call"
-      : "Call ended — no transcript received";
+    this.setStatus(this.store.segments.size || this.store.handoff
+      ? "transcript.retained"
+      : "transcript.emptyAfterCall");
   }
 
   clear() {
     this.store.clear();
     this.rows.clear();
     this.handoffRow = null;
+    this.handoffEvent = null;
+    this.handoffOutcome = null;
     this.container.replaceChildren();
     if (this.announcement) this.announcement.textContent = "";
-    this.status.textContent = "No conversation yet";
+    this.setStatus("transcript.noConversation");
   }
 }

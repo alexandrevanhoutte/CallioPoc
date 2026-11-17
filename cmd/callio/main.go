@@ -36,7 +36,7 @@ func main() {
 	var provider realtime.VoiceProvider
 	var summarizer call.Summarizer
 	if cfg.GeminiAPIKey != "" {
-		geminiProvider, err := gemini.New(ctx, cfg.GeminiAPIKey, cfg.GeminiModel, cfg.GreetingLocale)
+		geminiProvider, err := gemini.New(ctx, cfg.GeminiAPIKey, cfg.GeminiModel)
 		if err != nil {
 			logger.Error("initialize AI provider", "error", err)
 			os.Exit(1)
@@ -51,7 +51,7 @@ func main() {
 		logger.Warn("GEMINI_API_KEY missing; live AI disabled (echo still available)")
 	}
 
-	router := httpapi.NewRouter(ctx, os.DirFS("web"), provider, summarizer)
+	router := httpapi.NewRouter(ctx, os.DirFS("web"), provider, summarizer, realtime.LocaleFrench)
 	server := httpapi.NewServer(net.JoinHostPort(cfg.BindHost, cfg.Port), router)
 	if err := httpapi.Run(ctx, server, logging.For("httpapi.server")); err != nil {
 		logger.Error("HTTP server stopped with error", "error", err)

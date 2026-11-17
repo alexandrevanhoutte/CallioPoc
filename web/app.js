@@ -1,15 +1,18 @@
+import { getLocale, setLocale, hasStoredLocale, SUPPORTED_LOCALES, t, localizePage } from "./i18n.js";
 import { MicrophoneCapture } from "./microphone.js";
 import { VoiceActivityGate } from "./voice-activity-gate.js";
 import { AudioSocket } from "./websocket.js";
 import { AudioPlayer } from "./audio-player.js";
-// The versioned URL avoids mixing a cached pre-CI-13.3 transcript module with this app.
-import { TranscriptView } from "./transcript.js?v=ci-13-3";
+// Versioned import avoids mixing cached frontend modules after updates.
+import { TranscriptView } from "./transcript.js?v=ci-18";
 import { SetupView, selectedMode } from "./setup.js";
 import { SummaryView } from "./summary.js";
 import { EventInspector } from "./event-inspector.js";
 import { MetricTooltips } from "./metric-tooltip.js";
 
 const modeSelector = document.querySelector("#stream-mode");
+const languageSelect = document.querySelector("#language-select");
+languageSelect.value = getLocale();
 const startButton = document.querySelector("#mic-start");
 const stopButton = document.querySelector("#mic-stop");
 const micStatus = document.querySelector("#mic-status");
@@ -46,8 +49,8 @@ const inspector = new EventInspector({
 
 function updateAdvancedConfiguration() {
   const live = selectedMode(modeSelector) === "live";
-  document.querySelector("#advanced-mode").textContent = live ? "Talk to Callio" : "Test my microphone";
-  document.querySelector("#advanced-provider").textContent = live ? "Gemini Live" : "Local echo";
+  document.querySelector("#advanced-mode").textContent = live ? t("call.mode.liveTitle") : t("call.mode.echoTitle");
+  document.querySelector("#advanced-provider").textContent = live ? "Gemini Live" : t("provider.echo");
   document.querySelector("#advanced-endpoint").textContent = live ? "/ws/live" : "/ws/audio";
   document.querySelector("#advanced-received-format").textContent =
     live ? "PCM16 · 24 kHz · mono" : "PCM16 · 16 kHz · mono";
@@ -55,8 +58,26 @@ function updateAdvancedConfiguration() {
 modeSelector.addEventListener("change", updateAdvancedConfiguration);
 updateAdvancedConfiguration();
 
+// Backend outcomes stay language-neutral; translate only their UI labels.
+function outcomeLabel(outcome) {
+  const labels = {
+    completed: "outcome.completed",
+    conversation_finished: "outcome.conversationFinished",
+    ended: "outcome.ended",
+    requested: "outcome.requested",
+    accepted: "outcome.accepted",
+    decline: "outcome.decline",
+    no_answer: "outcome.noAnswer",
+    idle_timeout: "outcome.idleTimeout",
+    caller_finished: "outcome.callerFinished",
+    manual: "outcome.manual",
+  };
+  return labels[outcome] ? t(labels[outcome]) : (outcome || t("outcome.completed"));
+}
+
 function setCallState(label, tone = "") {
-  callStateLabel.textContent = label;
+  callStateLabel.dataset.labelKey = label;
+  callStateLabel.textContent = t(label);
   if (tone) callStateLabel.dataset.tone = tone;
   else delete callStateLabel.dataset.tone;
 }
@@ -79,6 +100,9 @@ const summaryView = new SummaryView({
 
 const setup = new SetupView({
   status: document.querySelector("#health-status"),
+  onCapabilities: ({ greeting_locale }) => {
+    if (!hasStoredLocale() && SUPPORTED_LOCALES.includes(greeting_locale)) applyLocale(greeting_locale, false);
+  },
   dot: document.querySelector("#health-dot"),
   retry: document.querySelector("#check-health"),
   selector: modeSelector,
@@ -99,10 +123,10 @@ function showCallState(current, state, outcome = "") {
   current.callState = state;
   current.pendingAction = false;
   const labels = {
-    ai_active: "Callio answering",
-    handoff_required: "Handoff requested",
-    human_active: "Human takeover",
-    completed: "Call completed",
+    ai_active: "call.state.answering",
+    handoff_required: "handoff.requested",
+    human_active: "call.state.human",
+    completed: "call.state.completed",
   };
   const tones = {
     ai_active: "active",
@@ -114,11 +138,11 @@ function showCallState(current, state, outcome = "") {
   transcript.resolveHandoff(outcome);
   handoffControls.hidden = state !== "handoff_required";
   for (const { button } of handoffButtons) button.disabled = state !== "handoff_required";
-  if (outcome === "decline") callFeedback.textContent = "Owner declined — Callio can take a message.";
-  else if (outcome === "no_answer") callFeedback.textContent = "No answer — Callio can take a message.";
-  else if (state === "human_active") callFeedback.textContent = "Human takeover simulated — Gemini stopped. No real phone connection.";
-  else if (state === "completed") callFeedback.textContent = `Call ended · ${outcome || "completed"} · microphone and AI off.`;
-  else if (state === "handoff_required") callFeedback.textContent = "Choose how to respond to this simulated transfer.";
+  if (outcome === "decline") callFeedback.textContent = t("handoff.declinedCanMessage");
+  else if (outcome === "no_answer") callFeedback.textContent = t("handoff.noAnswerCanMessage");
+  else if (state === "human_active") callFeedback.textContent = t("handoff.humanAcceptedDetail");
+  else if (state === "completed") callFeedback.textContent = t("call.completedFeedback", { reason: outcomeLabel(outcome) });
+  else if (state === "handoff_required") callFeedback.textContent = t("handoff.chooseResponse");
   else if (state === "ai_active") callFeedback.textContent = "";
 }
 
@@ -126,11 +150,11 @@ function sendHandoffAction(action) {
   const current = session;
   if (!current || !current.live || current.callState !== "handoff_required" || current.pendingAction) return;
   if (!current.socket.sendControl(action)) {
-    callFeedback.textContent = "Could not send command.";
+    callFeedback.textContent = t("error.commandSend");
     return;
   }
   current.pendingAction = true;
-  callFeedback.textContent = "Waiting for confirmation…";
+  callFeedback.textContent = t("handoff.waitingConfirmation");
   for (const { button } of handoffButtons) button.disabled = true;
 }
 
@@ -145,11 +169,24 @@ const transcript = new TranscriptView(
 
 let session = null;
 
+function applyLocale(locale, persist = true) {
+  if (session || !setLocale(locale, { persist })) return;
+  languageSelect.value = getLocale();
+  setup.render();
+  summaryView.refreshLocale();
+  transcript.refreshLocale();
+  updateAdvancedConfiguration();
+  inspector.render();
+  if (callStateLabel.dataset.labelKey) setCallState(callStateLabel.dataset.labelKey, callStateLabel.dataset.tone || "");
+  startButtonLabel.textContent = t(startButtonLabel.dataset.labelKey || "call.start");
+}
+languageSelect.addEventListener("change", () => applyLocale(languageSelect.value));
+
 function readableError(error) {
-  if (error?.name === "NotAllowedError") return "Microphone permission denied. Allow microphone access in your browser settings, then try again.";
-  if (error?.name === "NotFoundError") return "No microphone found. Connect a microphone and try again.";
-  if (error?.name === "NotReadableError") return "Microphone unavailable or in use by another app.";
-  return error?.message || "Unknown audio error.";
+  if (error?.name === "NotAllowedError") return t("mic.permissionDenied");
+  if (error?.name === "NotFoundError") return t("mic.notFound");
+  if (error?.name === "NotReadableError") return t("mic.unavailable");
+  return error?.message || t("error.audioUnknown");
 }
 
 async function stopSession(error) {
@@ -160,6 +197,7 @@ async function stopSession(error) {
   stopButton.disabled = true;
   stopButton.hidden = true;
   modeSelector.disabled = false;
+  languageSelect.disabled = false;
   echo.disabled = true;
   echo.checked = false;
   micReady.classList.remove("is-active");
@@ -170,19 +208,20 @@ async function stopSession(error) {
     try { await current.microphone?.stop(); } catch (e) { error ??= e; }
     try { await current.player.disable(); } catch (e) { error ??= e; }
   } finally {
-    micStatus.textContent = error ? `Error: ${readableError(error)}` : "Stopped";
-    socketStatus.textContent = error ? "Disconnected (error)" : "Disconnected";
+    micStatus.textContent = error ? t("error.generic", { message: readableError(error) }) : t("mic.stopped");
+    socketStatus.textContent = error ? t("socket.disconnectedError") : t("socket.disconnected");
     aiStatus.textContent = error && current.callState !== "completed"
-      ? readableError(error) : current.callState === "completed" ? "Finished" : "Idle";
+      ? readableError(error) : current.callState === "completed" ? t("call.state.finished") : t("call.state.idle");
     if (current.callState === "completed") summaryView.unavailable();
     transcript.finish();
     handoffControls.hidden = true;
-    if (current.callState === "completed") setCallState("Call completed", "done");
-    else if (error) setCallState("Disconnected", "error");
-    else setCallState("Call ended", "done");
-    signalStatus.textContent = "No active audio input";
+    if (current.callState === "completed") setCallState("call.state.completed", "done");
+    else if (error) setCallState("socket.disconnected", "error");
+    else setCallState("call.state.ended", "done");
+    signalStatus.textContent = t("mic.noInput");
     level.value = 0;
-    startButtonLabel.textContent = "Start new call";
+    startButtonLabel.dataset.labelKey = "call.startNew";
+    startButtonLabel.textContent = t("call.startNew");
     setup.setActive(false);
   }
 }
@@ -192,7 +231,7 @@ async function startMicrophone(current, socket) {
   current.microphoneStarting = true;
   const live = current.live;
   try {
-    micStatus.textContent = "Requesting microphone permission…";
+    micStatus.textContent = t("mic.permissionRequest");
     const microphone = new MicrophoneCapture({
       onAudioChunk: (pcm16, rms) => {
         if (session !== current || current.finishing) return;
@@ -200,8 +239,8 @@ async function startMicrophone(current, socket) {
         const db = rms > 0 ? 20 * Math.log10(rms) : -Infinity;
         level.value = Math.max(0, Math.min(100, Math.round((db + 60) * (100 / 54))));
         signalStatus.textContent = rms >= 0.008
-          ? "Sound detected"
-          : live ? "Silence / low input (filtered when idle)" : "Silence / low input (chunks arriving)";
+          ? t("mic.soundDetected")
+          : live ? t("mic.lowInputFiltered") : t("mic.lowInputReceived");
         const result = current.gate?.push(pcm16, rms) ?? { frames: [pcm16], end: false };
         if (current.gate) filtered.value = String(current.gate.filtered);
         for (const frame of result.frames) {
@@ -224,9 +263,9 @@ async function startMicrophone(current, socket) {
       await microphone.stop();
       return;
     }
-    micStatus.textContent = "Recording";
+    micStatus.textContent = t("mic.recording");
     micReady.classList.add("is-active");
-    if (!live) aiStatus.textContent = "Echo test";
+    if (!live) aiStatus.textContent = t("call.state.echo");
     if (!live) echo.disabled = false;
   } catch (error) {
     if (session === current) await stopSession(error);
@@ -238,18 +277,20 @@ async function startMicrophone(current, socket) {
 startButton.addEventListener("click", async () => {
   setup.setActive(true);
   stopButton.hidden = false;
-  startButtonLabel.textContent = "Start conversation";
+  startButtonLabel.dataset.labelKey = "call.start";
+  startButtonLabel.textContent = t("call.start");
   modeSelector.disabled = true;
+  languageSelect.disabled = true;
   const live = selectedMode(modeSelector) === "live";
-  micStatus.textContent = "Connecting to Go…";
-  socketStatus.textContent = "Connecting…";
-  aiStatus.textContent = live ? "Connecting to Gemini…" : "Echo test";
-  signalStatus.textContent = "Waiting for audio chunks…";
+  micStatus.textContent = t("socket.connectingGo");
+  socketStatus.textContent = t("socket.connecting");
+  aiStatus.textContent = live ? t("socket.connectingGemini") : t("call.state.echo");
+  signalStatus.textContent = t("mic.waitingChunks");
   level.value = 0;
   transcript.clear();
   transcript.begin(live);
   summaryView.reset();
-  setCallState(live ? "Connecting" : "Echo test", live ? "active" : "");
+  setCallState(live ? "call.state.connecting" : "call.state.echo", live ? "active" : "");
   callFeedback.textContent = "";
   inspector.clear();
   handoffControls.hidden = true;
@@ -260,7 +301,7 @@ startButton.addEventListener("click", async () => {
     if (session !== current) return;
     acknowledgePlayback();
     if (!current.finishing && current.generationFinished && current.callState !== "human_active") {
-      aiStatus.textContent = "Listening";
+      aiStatus.textContent = t("call.state.listening");
     }
   };
   const acknowledgePlayback = () => {
@@ -272,6 +313,7 @@ startButton.addEventListener("click", async () => {
   };
   const socket = new AudioSocket({
     endpoint: live ? "/ws/live" : "/ws/audio",
+    locale: live ? getLocale() : null,
     onTraffic: (event) => {
       if (session === current) inspector.record(event);
     },
@@ -298,7 +340,7 @@ startButton.addEventListener("click", async () => {
       }
       if (live) {
         current.generationFinished = false;
-        aiStatus.textContent = "Callio speaking";
+        aiStatus.textContent = t("call.state.speaking");
       }
     },
     onEvent: (event) => {
@@ -311,9 +353,9 @@ startButton.addEventListener("click", async () => {
       }
       if (event.type === "call_finishing") {
         current.finishing = true;
-        setCallState("Finishing call…", "attention");
-        aiStatus.textContent = "Finalizing audio…";
-        callFeedback.textContent = `Finishing final audio · ${event.reason || "conversation finished"}`;
+        setCallState("call.state.finishing", "attention");
+        aiStatus.textContent = t("call.state.finalizing");
+        callFeedback.textContent = t("call.finalAudioFeedback", { reason: outcomeLabel(event.reason || "conversation_finished") });
         stopButton.disabled = true;
         void current.microphone?.stop().catch(error => console.warn("Microphone stop failed", error));
         // Leave queued audio playing. Only acknowledge after all sources finish.
@@ -332,20 +374,20 @@ startButton.addEventListener("click", async () => {
           void current.player.disable().catch((error) => {
             console.warn("Failed to disable playback after takeover", error);
           });
-          micStatus.textContent = "Microphone stopped — simulated human takeover";
-          aiStatus.textContent = "AI stopped";
+          micStatus.textContent = t("mic.handoffStopped");
+          aiStatus.textContent = t("call.state.aiStopped");
         }
         if (event.state === "completed") {
           current.finishing = true;
           stopButton.disabled = true;
-          aiStatus.textContent = "Preparing summary…";
+          aiStatus.textContent = t("summary.preparing");
           summaryView.loading();
           void current.microphone?.stop().catch(error => console.warn("Microphone stop failed", error));
         }
       }
       if (event.type === "call_end_cancelled") {
-        callFeedback.textContent = "Call is continuing.";
-        setCallState("Callio answering", "active");
+        callFeedback.textContent = t("call.continuing");
+        setCallState("call.state.answering", "active");
         stopButton.disabled = false;
       }
       if (event.type === "call_error") {
@@ -355,7 +397,7 @@ startButton.addEventListener("click", async () => {
           return;
         }
         if (!current.finishing && current.callState !== "completed") stopButton.disabled = false;
-        callFeedback.textContent = `Command ${event.action || ""} rejected: ${event.error || "Unknown error"}`;
+        callFeedback.textContent = t("error.commandRejected", { action: event.action || "", error: event.error || t("error.unknown") });
         for (const { button } of handoffButtons) button.disabled = current.callState !== "handoff_required";
       }
       if (event.type === "handoff_required") {
@@ -365,13 +407,13 @@ startButton.addEventListener("click", async () => {
       if (event.type === "turn_end" && current.callState !== "human_active") {
         current.generationFinished = true;
         aiStatus.textContent = current.player.sources.size > 0
-          ? "Playing response…" : "Listening for caller";
+          ? t("call.state.playing") : t("call.state.listeningCaller");
       }
       if (event.type === "interrupted" && current.callState !== "human_active") {
         interruptions.value = String(Number(interruptions.value) + 1);
         current.generationFinished = false;
         current.player.clear();
-        aiStatus.textContent = "Interrupted · listening";
+        aiStatus.textContent = t("call.state.interrupted");
       }
     },
     onDisconnect: (error) => {
@@ -389,11 +431,11 @@ startButton.addEventListener("click", async () => {
     if (session !== current) return;
     await socket.connect();
     if (session !== current) return;
-    socketStatus.textContent = "Connected";
+    socketStatus.textContent = t("socket.connected");
 
     stopButton.disabled = false;
-    if (live) setCallState("Callio answering", "active");
-    if (live) aiStatus.textContent = "Greeting / listening…";
+    if (live) setCallState("call.state.answering", "active");
+    if (live) aiStatus.textContent = t("call.state.greeting");
     // Start microphone immediately for true full duplex barge-in, including
     // during the initial assistant greeting. Gemini VAD handles activity.
     await startMicrophone(current, socket);
@@ -412,7 +454,7 @@ stopButton.addEventListener("click", () => {
     return;
   }
   stopButton.disabled = true;
-  callFeedback.textContent = "Ending call…";
+  callFeedback.textContent = t("call.state.ending");
 });
 
 echo.addEventListener("change", () => {
@@ -420,9 +462,12 @@ echo.addEventListener("change", () => {
   if (echo.checked) {
     void session.player.enable().catch((error) => {
       echo.checked = false;
-      socketStatus.textContent = `Playback error: ${readableError(error)}`;
+      socketStatus.textContent = t("error.playback", { message: readableError(error) });
     });
   } else {
     void session.player.disable();
   }
 });
+
+// HTML is served in English; localize it after view initialization.
+localizePage();

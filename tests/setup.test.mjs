@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { modeDescription, selectedMode, setupMessage, SetupView } from "../web/setup.js";
+import { setLocale } from "../web/i18n.js";
+import { loadTestLocales } from "./i18n-fixture.mjs";
+
+// Existing view tests assert English copy explicitly; the app defaults to French.
+await loadTestLocales();
+setLocale("en-US", { persist: false });
 
 test("local setup keeps Echo usable without Gemini credentials", () => {
   assert.match(modeDescription("echo", false), /without an API key/);

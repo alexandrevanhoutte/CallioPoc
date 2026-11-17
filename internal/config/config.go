@@ -7,7 +7,6 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
 	"github.com/joho/godotenv"
 )
 
@@ -25,7 +24,6 @@ type Config struct {
 	GeminiAPIKey   string
 	GeminiModel    string
 	SummaryModel   string
-	GreetingLocale realtime.Locale
 }
 
 func Load() (Config, error) {
@@ -64,15 +62,6 @@ func Load() (Config, error) {
 		model = defaultModel
 	}
 
-	localeValue := os.Getenv("CALL_GREETING_LOCALE")
-	if localeValue == "" {
-		localeValue = realtime.LocaleFrench.String()
-	}
-	locale, err := realtime.NewLocale(localeValue)
-	if err != nil {
-		return Config{}, fmt.Errorf("invalid CALL_GREETING_LOCALE: %w", err)
-	}
-
 	summaryModel := os.Getenv("GEMINI_SUMMARY_MODEL")
 	if summaryModel == "" {
 		summaryModel = defaultSummaryModel
@@ -85,6 +74,5 @@ func Load() (Config, error) {
 		GeminiAPIKey:   os.Getenv("GEMINI_API_KEY"),
 		GeminiModel:    model,
 		SummaryModel:   summaryModel,
-		GreetingLocale: locale,
 	}, nil
 }
