@@ -238,7 +238,7 @@ Go contexts are used for cancellation and server shutdown. The server also handl
 
 ### 5. Transcripts and summaries
 
-Call transcripts are collected **in memory**, with provisional and finalized segments. Once a call completes, only finalized transcript data and relevant call metadata are passed to a separate text-generation request to produce a structured French summary. Summary failure is reported without undoing call completion.
+Call transcripts are collected **in memory**, with provisional and finalized segments. Once a call completes, only finalized transcript data and relevant call metadata are passed to a separate text-generation request to produce a structured summary in the selected interface language. Summary failure is reported without undoing call completion.
 
 Call metadata, transcripts, and summaries are **not persisted to files or a database**. Reloading the page or restarting the server loses them.
 
@@ -254,34 +254,37 @@ Callio does **not** have a prompt-editor service or a database of user-specific 
 | Post-call summary | `SummaryPrompt(contextJSON)` | A **new** text-model request built from finalized transcript segments, end reason and optional handoff details |
 
 ```text
-Load .env
+Browser language selector (fr-FR, en-US, ko-KR; saved in localStorage)
   |
-  +--> greeting locale ------> OpeningPrompt(locale)
-  |                                 |
-  +--> static rules --------> Gemini Live system instruction
-                                    |
-                            caller conversation
-                                    |
-                     Gemini tool call: request_handoff
-                                    |
-                     Go validates tool args + lifecycle
-                                    |
-                decline / no_answer (simulated UI action)
-                                    |
-                       HandoffOutcomePrompt(outcome)
-                                    |
-                          continue live dialogue
-                                    |
-                             completed call
-                                    |
-                    finalized transcript + call metadata
-                                    |
-                         SummaryPrompt(contextJSON)
-                                    |
-                        separate Gemini text request
+  +--> GET /ws/live?locale=... --> Go validates locale --> OpeningPrompt(locale)
+  |
+  +--> Embedded YAML policies --> Gemini Live system instructions
+                                        |
+                                 caller conversation
+                                        |
+                          set_call_context (category + facts)
+                                        |
+                       Go validates fields / missing requirements
+                                        |
+                     +------------------+-------------------+
+                     |                  |                   |
+              request_handoff      record_message    request_call_end
+                     |                  |                   |
+            Go validates lifecycle   Note kept only        Goodbye audio
+              / owner decision       in this call        + playback ack
+                     |                                      |
+             accept/decline/no_answer                      |
+                     |                                      |
+            Resume, simulate takeover or end call --------+
+                                        |
+                              Finalized transcript + metadata
+                                        |
+                             SummaryPrompt(contextJSON)
+                                        |
+                           Separate Gemini text model request
 ```
 
-The model has two declared **function tools** in `internal/realtime/gemini/tools.go`: `request_handoff` and `request_call_end`. The model can *request* either action; it does **not** directly change Go's lifecycle or complete a phone transfer. Go validates function arguments and owns the outcome.
+The model has **four declared function tools** in `internal/realtime/gemini/tools.go`: `set_call_context` (choose a conversation category and record caller facts), `request_handoff` (ask for a simulated owner handoff), `record_message` (record a temporary note for the current call), and `request_call_end` (request natural completion). The backend validates category requirements and tool arguments. In particular, a handoff request is **not** a recorded note, a confirmed transfer or permission to continue speaking during an owner's decision. All call-state transitions are owned by Go.
 
 Examples: a `ko-KR` greeting is fixed for the **first** spoken message only; if the caller switches to French, the model is instructed to follow French. If the demo operator clicks **Decline** on a handoff, Go sends an outcome-specific instruction and the assistant can offer to take a message. When the call ends, Go constructs a new summary prompt using **finalized** transcript data; it does not ask the live voice model to summarize itself.
 
@@ -293,9 +296,9 @@ These prompts are **context-dependent, not automatically personalized**: there a
 | --- | --- |
 | `GET /` | Static browser demo |
 | `GET /health` | Basic server health |
-| `GET /capabilities` | Public `status` and `live_configured` flags (no credentials) |
+| `GET /capabilities` | Public readiness flags (`status`, `live_configured`) and default `greeting_locale`; no credentials |
 | `GET /ws/audio` | Echo test: binary audio round-trip |
-| `GET /ws/live` | Gemini Live audio and control events |
+| `GET /ws/live?locale=fr-FR` | Gemini Live audio and control events; `locale` may be `fr-FR`, `en-US` or `ko-KR`. If omitted, defaults to French; invalid or duplicate values receive HTTP 400 before the WebSocket upgrade. |
 
 **Wire protocol**
 
@@ -361,7 +364,7 @@ Always commit updated `vendor/` together with any `go.mod` / `go.sum` changes. A
 
 ## Tests
 
-From the repository root, with no module downloads:
+Run the existing Go and JavaScript tests from the repository root (the vendored Go dependencies avoid module downloads):
 
 ```bash
 GOPROXY=off go test -mod=vendor ./...
@@ -370,8 +373,7 @@ GOPROXY=off go vet -mod=vendor ./...
 node --test tests/*.test.cjs tests/*.test.mjs   # optional: Node.js 22+
 ```
 
-
-Go source formatting (excluding vendored dependencies) is checked in CI. To list files that need formatting and to fix them locally:
+The CI checks `gofmt` for application Go files; `vendor/` is excluded. Inspect or fix formatting locally:
 
 ```bash
 gofmt -l cmd internal
@@ -383,70 +385,10 @@ gofmt -w cmd internal
 Run the deterministic Go scenarios without a microphone, Gemini credentials or external network access:
 
 ```bash
-GOPROXY=off go test -mod=vendor ./internal/httpapi -run '^TestLiveScenarios
-
-## Deliberate trade-offs and limitations
-
-This project demonstrates **backend architecture and real-time streaming**, not a production telephone service.
-
-- **No users or authentication.** Single-user local playground; no identity, login, authorization, or account isolation.
-- **No database or persistence.** Session state, transcripts, and summaries are ephemeral.
-- **No real phone number or PSTN integration.** Browser microphone replaces a telecom provider; handoff and takeover are simulated.
-- **No deployment infrastructure.** No Kubernetes, queues, distributed workers, load balancing, or horizontal scaling.
-- **One AI provider.** Interfaces allow replacement, but Gemini is the only working adapter.
-- **Prototype-grade audio activity detection.** RMS thresholds can misclassify quiet speech or background noise; automatic transcription and language switching are best effort.
-- **Not hardened for untrusted traffic.** No rate limiting, authentication, production observability, or real-world consent/retention workflow.
-
-If extending this to a production service, the first steps would include authentication, explicit consent and data-retention policies, robust telephony integration, persistent call records, and appropriate abuse controls. Live audio and finalized transcripts are sent to the configured Google models; do not test with sensitive conversations without considering privacy requirements.
-
-## Troubleshooting
-
-- **No AI option?** Check `GEMINI_API_KEY`, restart the process/container, and inspect `GET /capabilities`. The live model must be available to your Google project.
-- **Microphone unavailable?** Use `http://localhost:8080` with a supported browser and grant microphone permission. Remote HTTP addresses may not be secure browser contexts.
-- **Assistant silent or repeatedly interrupted?** Try headphones to prevent playback from reaching the microphone. Review **Advanced** audio counters and browser console output.
-- **Docker port not reachable?** Use `-p 127.0.0.1:8080:8080` and keep the container's `CALLIO_BIND_HOST=0.0.0.0` default.
-- **Need a different host port?** Use `-p 127.0.0.1:9090:8080` and open `http://localhost:9090`.
-- **Need a different container port?** Set `PORT` in `.env` and update the right-hand side of the `-p` mapping accordingly.
-
-## Backend logging
-
-Callio writes structured JSON logs to stdout through an application-owned
-`internal/logging.Logger` interface. The `slog` adapter is private to
-`internal/logging/`; other packages must not import `log/slog` directly.
-
-Set `LOG_LEVEL` in `.env` to `debug`, `info` (default), `warn`, or
-`error`. Unknown values fail startup with a configuration error.
-Each service holds and reuses its own logger, tagged with a component:
-
-```go
-type Service struct {
-    l logging.Logger
-}
-
-func NewService() *Service {
-    return &Service{l: logging.For("example")}
-}
-
-func (s *Service) Start() {
-    s.l.Info("service started", "state", "active")
-}
+GOPROXY=off go test -mod=vendor ./internal/httpapi -run '^TestLiveScenarios$' -v
 ```
 
-Use `logging.L()` for the root logger and `logging.For("component")`
-for a component logger. `With("key", value)` returns a derived logger
-without changing its parent. Tests can use `logging.New(writer, "debug")`
-or inject a fake `logging.Logger` implementation. The output format and
-log level are configured once in `logging.Init(...)`, so a future switch
-away from `slog` requires changing only the logging kit. Never log API
-keys, audio payloads, full transcripts or caller personal details.
-
-## License
-
-No license has been selected yet. Until a license file is added, the repository should not be assumed to grant permission to reuse or redistribute the code.
- -v
-```
-
-`internal/httpapi/livescenario_test.go` uses the real HTTP/WebSocket bridge with the scripted `VoiceProvider` and fake summarizer. It covers a French conversation and natural goodbye, all three recruiting handoff outcomes, an ambiguous request, interruption recovery and disconnect cleanup. It checks event order, finalized summary input and provider closure. These tests cover Go lifecycle/protocol behavior, **not** Gemini's ability to understand spoken requests, select the correct tool or stay on topic.
+`internal/httpapi/livescenario_test.go` uses the real HTTP/WebSocket bridge with a scripted `VoiceProvider` and fake summarizer. It covers a French conversation and natural goodbye, all three recruiting handoff outcomes, an ambiguous request, interruption recovery and disconnect cleanup. It checks event order, finalized summary input and provider closure. These tests cover Go lifecycle and protocol behavior, **not** Gemini's ability to understand spoken requests, select the correct tool or stay on topic.
 
 ### Manual end-to-end smoke tests
 
@@ -466,7 +408,24 @@ Use fictitious details and headphones. Start Callio with `go run ./cmd/callio` o
 
 Except for Echo, these manual scenarios require an API key and a supported Gemini Live model. AI behavior and transcription remain best-effort; if an issue occurs, record the locale, configured model, event order, and whether an unusual answer was **audible or only transcribed**. Do not put audio, real caller information or API keys in GitHub issues.
 
+## Security checks before publication
 
+A dedicated [secret-scanning workflow](.github/workflows/secret-scan.yml) runs Gitleaks in three modes:
+
+- **Pull requests:** scan every commit introduced by the PR (from the merge base with its target branch to the PR head), including secrets that were committed and removed later within the same PR.
+- **Pushes to `main`:** scan commits introduced by that push; if the previous commit is unavailable, scan all reachable history instead.
+- **Manual GitHub Actions run (`workflow_dispatch`):** fetch accessible branch and pull-request refs, then scan all reachable Git history.
+
+All scans redact potential secret values from their output.
+
+Run a local full-history check when auditing a new clone:
+
+```bash
+git fetch --all --tags
+gitleaks git --redact --log-opts="--all" .
+```
+
+A clean scan **does not guarantee** that no secret or personal information was ever published. Before changing the repository visibility, also review GitHub issues, pull requests, attached screenshots, comments, Actions logs/artifacts, and old or deleted branches. Secret scanners check known patterns; they do not identify all personal information. **Revoke and replace any exposed credential**, even if it appears only in an old commit. Avoid committing reports that contain secret values.
 
 ## Deliberate trade-offs and limitations
 
@@ -525,4 +484,4 @@ keys, audio payloads, full transcripts or caller personal details.
 
 ## License
 
-No license has been selected yet. Until a license file is added, the repository should not be assumed to grant permission to reuse or redistribute the code.
+Callio's original source code is released under the [MIT License](LICENSE). Third-party dependencies in `vendor/` retain their own applicable licenses.
