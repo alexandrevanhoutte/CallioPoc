@@ -53,7 +53,7 @@ func TestCategoryToolsAndGuard(t *testing.T) {
 
 func TestMessageAcknowledgementAndClosingGuidance(t *testing.T) {
 	message := messageTool().FunctionDeclarations[0].Description
-	for _, fragment := range []string{"After a successful tool response", "natural language", "do NOT automatically end the call", "not sent"} {
+	for _, fragment := range []string{"After a successful tool response", "natural language", "do NOT automatically end the call", "not been sent"} {
 		if !strings.Contains(message, fragment) {
 			t.Fatalf("message tool missing conversation guidance %q", fragment)
 		}
@@ -65,7 +65,7 @@ func TestMessageAcknowledgementAndClosingGuidance(t *testing.T) {
 		}
 	}
 	global := conversation.Default().Prompt()
-	for _, fragment := range []string{"Do not end the call merely because a note was recorded", "Do not say you cannot record a note", "has NOT been sent"} {
+	for _, fragment := range []string{"Do not end the call merely because a note was recorded", "After record_message succeeds", "Never contradict a successful tool acknowledgment", "has NOT been sent"} {
 		if !strings.Contains(global, fragment) {
 			t.Fatalf("general policy missing guidance %q", fragment)
 		}
