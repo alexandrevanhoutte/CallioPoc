@@ -9,7 +9,7 @@ import (
 
 func TestLocale(t *testing.T) {
 	for _, tc := range []struct {
-		value string
+		value    string
 		greeting string
 	}{
 		{"fr-FR", "Bonjour"},
@@ -17,8 +17,12 @@ func TestLocale(t *testing.T) {
 		{"ko-KR", "안녕하세요"},
 	} {
 		locale, err := realtime.NewLocale(tc.value)
-		if err != nil { t.Fatal(err) }
-		if locale.String() != tc.value { t.Fatalf("Locale.String() = %q, want %q", locale.String(), tc.value) }
+		if err != nil {
+			t.Fatal(err)
+		}
+		if locale.String() != tc.value {
+			t.Fatalf("Locale.String() = %q, want %q", locale.String(), tc.value)
+		}
 		if realtime.GreetingText(locale) == "" || !strings.Contains(realtime.GreetingText(locale), tc.greeting) {
 			t.Fatalf("missing %s greeting", tc.value)
 		}
@@ -42,9 +46,13 @@ func TestMultilingualInstructions(t *testing.T) {
 	}
 	for _, outcome := range []string{"decline", "no_answer"} {
 		prompt, err := realtime.HandoffOutcomePrompt(outcome)
-		if err != nil || !strings.Contains(prompt, "caller's language") { t.Fatalf("outcome %s: %v", outcome, err) }
+		if err != nil || !strings.Contains(prompt, "caller's language") {
+			t.Fatalf("outcome %s: %v", outcome, err)
+		}
 	}
-	if _, err := realtime.HandoffOutcomePrompt("invalid"); err == nil { t.Fatal("invalid outcome accepted") }
+	if _, err := realtime.HandoffOutcomePrompt("invalid"); err == nil {
+		t.Fatal("invalid outcome accepted")
+	}
 }
 
 func TestWaitForCallerResponseBeforeHandoffInstructions(t *testing.T) {
@@ -91,14 +99,21 @@ func TestSummaryPrompt(t *testing.T) {
 	if strings.Count(prompt, string(data)) != 1 {
 		t.Fatal("summary context must be included exactly once")
 	}
-	for _, tc := range []struct { locale realtime.Locale; language string }{
+	for _, tc := range []struct {
+		locale   realtime.Locale
+		language string
+	}{
 		{realtime.LocaleFrench, "FRENCH"}, {realtime.LocaleEnglish, "ENGLISH"}, {realtime.LocaleKorean, "KOREAN"},
 	} {
 		got := realtime.SummaryPrompt(data, tc.locale)
-		if !strings.Contains(got, "factual " + tc.language) || !strings.Contains(got, "Never translate JSON keys") {
+		if !strings.Contains(got, "factual "+tc.language) || !strings.Contains(got, "Never translate JSON keys") {
 			t.Fatalf("incorrect summary language for %s: %s", tc.locale, got)
 		}
-		if strings.Count(got, string(data)) != 1 { t.Fatalf("summary context duplicated for %s", tc.locale) }
-		if realtime.EmptyTranscriptSummary(tc.locale) == "" { t.Fatalf("missing no-transcript message for %s", tc.locale) }
+		if strings.Count(got, string(data)) != 1 {
+			t.Fatalf("summary context duplicated for %s", tc.locale)
+		}
+		if realtime.EmptyTranscriptSummary(tc.locale) == "" {
+			t.Fatalf("missing no-transcript message for %s", tc.locale)
+		}
 	}
 }

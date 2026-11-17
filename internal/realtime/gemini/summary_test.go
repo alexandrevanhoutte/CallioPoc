@@ -1,9 +1,9 @@
 package gemini
 
 import (
-	"testing"
 	"context"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
+	"testing"
 
 	"github.com/alexandrevanhoutte/CallioPoc/internal/call"
 	"google.golang.org/genai"
@@ -12,7 +12,9 @@ import (
 func TestParseSummary(t *testing.T) {
 	raw := `{"caller_name":null,"reason":null,"urgency":"unknown","follow_up_actions":[],"handoff_requested":false,"summary":"Le motif reste inconnu."}`
 	summary, err := parseSummary(raw, true)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !summary.HandoffRequested || summary.CallerName != nil || summary.Reason != nil {
 		t.Fatalf("summary must preserve unknown fields and trusted handoff: %+v", summary)
 	}
@@ -36,17 +38,17 @@ func TestSummarizerContract(t *testing.T) {
 
 func TestNoFinalizedTranscriptDoesNotCallModel(t *testing.T) {
 	for _, locale := range []realtime.Locale{realtime.LocaleFrench, realtime.LocaleEnglish, realtime.LocaleKorean} {
-	s := &Summarizer{}
-	out, err := s.Summarize(context.Background(), call.SummaryInput{
-		Locale: locale,
-		Transcript: []realtime.TranscriptSegment{{
-			ID: "caller-1", Speaker: realtime.SpeakerCaller, Text: "unfinished",
-			Final: false,
-		}},
-	})
-	if err != nil || out.Text != realtime.EmptyTranscriptSummary(locale) || out.Urgency != "unknown" || out.CallerName != nil {
-		t.Fatalf("fallback summary must be factual without model: %+v, %v", out, err)
-	}
+		s := &Summarizer{}
+		out, err := s.Summarize(context.Background(), call.SummaryInput{
+			Locale: locale,
+			Transcript: []realtime.TranscriptSegment{{
+				ID: "caller-1", Speaker: realtime.SpeakerCaller, Text: "unfinished",
+				Final: false,
+			}},
+		})
+		if err != nil || out.Text != realtime.EmptyTranscriptSummary(locale) || out.Urgency != "unknown" || out.CallerName != nil {
+			t.Fatalf("fallback summary must be factual without model: %+v, %v", out, err)
+		}
 	}
 }
 

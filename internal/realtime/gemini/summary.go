@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"time"
 	"strings"
+	"time"
 
 	"github.com/alexandrevanhoutte/CallioPoc/internal/call"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/logging"
@@ -57,20 +57,20 @@ func (s *Summarizer) Summarize(ctx context.Context, input call.SummaryInput) (ca
 		return call.Summary{
 			Urgency: "unknown", FollowUpActions: []string{},
 			HandoffRequested: input.Handoff != nil,
-			Text: realtime.EmptyTranscriptSummary(input.Locale),
+			Text:             realtime.EmptyTranscriptSummary(input.Locale),
 		}, nil
 	}
 	var handoff any
 	if input.Handoff != nil {
 		handoff = map[string]any{
-			"reason": input.Handoff.Reason.String(),
+			"reason":  input.Handoff.Reason.String(),
 			"context": input.Handoff.Context,
 		}
 	}
 	contextJSON, err := json.Marshal(struct {
-		Transcript any `json:"transcript"`
-		Handoff any `json:"handoff,omitempty"`
-		EndReason string `json:"end_reason"`
+		Transcript any    `json:"transcript"`
+		Handoff    any    `json:"handoff,omitempty"`
+		EndReason  string `json:"end_reason"`
 	}{Transcript: transcript, Handoff: handoff, EndReason: input.EndReason.String()})
 	if err != nil {
 		return call.Summary{}, fmt.Errorf("encode summary input: %w", err)
@@ -84,22 +84,24 @@ func (s *Summarizer) Summarize(ctx context.Context, input call.SummaryInput) (ca
 		response, err = s.client.Models.GenerateContent(ctx, s.model,
 			[]*genai.Content{{Role: "user", Parts: []*genai.Part{{Text: prompt}}}},
 			&genai.GenerateContentConfig{
-			ResponseMIMEType: "application/json",
-			ResponseSchema: &genai.Schema{
-				Type: genai.TypeObject,
-				Properties: map[string]*genai.Schema{
-					"caller_name": {Type: genai.TypeString},
-					"reason": {Type: genai.TypeString},
-					"urgency": {Type: genai.TypeString, Enum: []string{"unknown", "low", "normal", "high"}},
-					"follow_up_actions": {Type: genai.TypeArray, Items: &genai.Schema{Type: genai.TypeString}},
-					"handoff_requested": {Type: genai.TypeBoolean},
-					"summary": {Type: genai.TypeString},
+				ResponseMIMEType: "application/json",
+				ResponseSchema: &genai.Schema{
+					Type: genai.TypeObject,
+					Properties: map[string]*genai.Schema{
+						"caller_name":       {Type: genai.TypeString},
+						"reason":            {Type: genai.TypeString},
+						"urgency":           {Type: genai.TypeString, Enum: []string{"unknown", "low", "normal", "high"}},
+						"follow_up_actions": {Type: genai.TypeArray, Items: &genai.Schema{Type: genai.TypeString}},
+						"handoff_requested": {Type: genai.TypeBoolean},
+						"summary":           {Type: genai.TypeString},
+					},
+					Required: []string{"urgency", "follow_up_actions", "handoff_requested", "summary"},
 				},
-				Required: []string{"urgency", "follow_up_actions", "handoff_requested", "summary"},
 			},
-		},
 		)
-		if err == nil { break }
+		if err == nil {
+			break
+		}
 		if !retryableSummaryError(err) || attempt == 1 {
 			return call.Summary{}, fmt.Errorf("Gemini summary generation: %w", err)
 		}
@@ -146,7 +148,9 @@ func parseSummary(raw string, handoff bool) (call.Summary, error) {
 
 func retryableSummaryError(err error) bool {
 	var apiErr genai.APIError
-	if !errors.As(err, &apiErr) { return false }
+	if !errors.As(err, &apiErr) {
+		return false
+	}
 	switch apiErr.Code {
 	case 500, 502, 503, 504:
 		return true

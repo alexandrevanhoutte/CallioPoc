@@ -39,7 +39,7 @@ func TestTranscriptUpdates(t *testing.T) {
 
 func TestSpeakerRoundTrip(t *testing.T) {
 	for _, tc := range []struct {
-		value string
+		value   string
 		speaker realtime.Speaker
 	}{
 		{"CALLER", realtime.SpeakerCaller},
@@ -85,12 +85,14 @@ func TestSpeakerRejectsInvalidValues(t *testing.T) {
 
 func TestTranscriptSpeakerJSONCompatibility(t *testing.T) {
 	segment := realtime.TranscriptSegment{
-		ID: "speaker-1",
+		ID:      "speaker-1",
 		Speaker: realtime.SpeakerCaller,
-		Text: "Bonjour",
+		Text:    "Bonjour",
 	}
 	data, err := json.Marshal(segment)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !bytes.Contains(data, []byte(`"speaker":"CALLER"`)) {
 		t.Fatalf("speaker JSON contract changed: %s", data)
 	}
@@ -98,5 +100,7 @@ func TestTranscriptSpeakerJSONCompatibility(t *testing.T) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded.Speaker != realtime.SpeakerCaller { t.Fatalf("decoded speaker: %v", decoded.Speaker) }
+	if decoded.Speaker != realtime.SpeakerCaller {
+		t.Fatalf("decoded speaker: %v", decoded.Speaker)
+	}
 }

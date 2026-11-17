@@ -9,10 +9,10 @@ import (
 
 func TestParseHandoff(t *testing.T) {
 	request, err := parseHandoff(map[string]any{
-		"reason": "owner_requested",
+		"reason":  "owner_requested",
 		"purpose": "Speak to owner",
 		"summary": "Caller wants to discuss an interview.",
-		"email": "caller@example.com",
+		"email":   "caller@example.com",
 	})
 	if err != nil {
 		t.Fatal(err)
