@@ -370,7 +370,95 @@ GOPROXY=off go vet -mod=vendor ./...
 node --test tests/*.test.cjs tests/*.test.mjs   # optional: Node.js 22+
 ```
 
-Manual smoke tests are still important for the actual microphone, browser audio playback, provider availability, interruptions, and handoff behavior. For a credential-free check, start Echo mode and enable optional Echo playback under **Advanced**.
+### Conversation scenarios
+
+Run the deterministic Go scenarios without a microphone, Gemini credentials or external network access:
+
+```bash
+GOPROXY=off go test -mod=vendor ./internal/httpapi -run '^TestLiveScenarios
+
+## Deliberate trade-offs and limitations
+
+This project demonstrates **backend architecture and real-time streaming**, not a production telephone service.
+
+- **No users or authentication.** Single-user local playground; no identity, login, authorization, or account isolation.
+- **No database or persistence.** Session state, transcripts, and summaries are ephemeral.
+- **No real phone number or PSTN integration.** Browser microphone replaces a telecom provider; handoff and takeover are simulated.
+- **No deployment infrastructure.** No Kubernetes, queues, distributed workers, load balancing, or horizontal scaling.
+- **One AI provider.** Interfaces allow replacement, but Gemini is the only working adapter.
+- **Prototype-grade audio activity detection.** RMS thresholds can misclassify quiet speech or background noise; automatic transcription and language switching are best effort.
+- **Not hardened for untrusted traffic.** No rate limiting, authentication, production observability, or real-world consent/retention workflow.
+
+If extending this to a production service, the first steps would include authentication, explicit consent and data-retention policies, robust telephony integration, persistent call records, and appropriate abuse controls. Live audio and finalized transcripts are sent to the configured Google models; do not test with sensitive conversations without considering privacy requirements.
+
+## Troubleshooting
+
+- **No AI option?** Check `GEMINI_API_KEY`, restart the process/container, and inspect `GET /capabilities`. The live model must be available to your Google project.
+- **Microphone unavailable?** Use `http://localhost:8080` with a supported browser and grant microphone permission. Remote HTTP addresses may not be secure browser contexts.
+- **Assistant silent or repeatedly interrupted?** Try headphones to prevent playback from reaching the microphone. Review **Advanced** audio counters and browser console output.
+- **Docker port not reachable?** Use `-p 127.0.0.1:8080:8080` and keep the container's `CALLIO_BIND_HOST=0.0.0.0` default.
+- **Need a different host port?** Use `-p 127.0.0.1:9090:8080` and open `http://localhost:9090`.
+- **Need a different container port?** Set `PORT` in `.env` and update the right-hand side of the `-p` mapping accordingly.
+
+## Backend logging
+
+Callio writes structured JSON logs to stdout through an application-owned
+`internal/logging.Logger` interface. The `slog` adapter is private to
+`internal/logging/`; other packages must not import `log/slog` directly.
+
+Set `LOG_LEVEL` in `.env` to `debug`, `info` (default), `warn`, or
+`error`. Unknown values fail startup with a configuration error.
+Each service holds and reuses its own logger, tagged with a component:
+
+```go
+type Service struct {
+    l logging.Logger
+}
+
+func NewService() *Service {
+    return &Service{l: logging.For("example")}
+}
+
+func (s *Service) Start() {
+    s.l.Info("service started", "state", "active")
+}
+```
+
+Use `logging.L()` for the root logger and `logging.For("component")`
+for a component logger. `With("key", value)` returns a derived logger
+without changing its parent. Tests can use `logging.New(writer, "debug")`
+or inject a fake `logging.Logger` implementation. The output format and
+log level are configured once in `logging.Init(...)`, so a future switch
+away from `slog` requires changing only the logging kit. Never log API
+keys, audio payloads, full transcripts or caller personal details.
+
+## License
+
+No license has been selected yet. Until a license file is added, the repository should not be assumed to grant permission to reuse or redistribute the code.
+ -v
+```
+
+`internal/httpapi/livescenario_test.go` uses the real HTTP/WebSocket bridge with the scripted `VoiceProvider` and fake summarizer. It covers a French conversation and natural goodbye, all three recruiting handoff outcomes, an ambiguous request, interruption recovery and disconnect cleanup. It checks event order, finalized summary input and provider closure. These tests cover Go lifecycle/protocol behavior, **not** Gemini's ability to understand spoken requests, select the correct tool or stay on topic.
+
+### Manual end-to-end smoke tests
+
+Use fictitious details and headphones. Start Callio with `go run ./cmd/callio` or Docker; open `http://localhost:8080` and follow these scenarios:
+
+| Scenario | Steps | Expected |
+| --- | --- | --- |
+| Echo (no Gemini key) | Select **Test my microphone**, speak, optionally enable echo playback in Advanced, then stop | Mic frames reach Go, optional playback works, call cleans up |
+| French conversation | Choose Français / Talk to Callio, give a short reason, then say goodbye | Brief French replies, live transcripts, farewell audio before summary |
+| Recruiting handoff | Ask for the owner about a fictitious interview, give a name and purpose | One handoff request, no false “message recorded” statement while pending |
+| Accept | In a new recruiting call, select **Accept** | AI stops; takeover is simulated, not a real phone transfer |
+| Decline / No answer | Repeat with **Decline** and **No answer** | AI resumes, may offer to take a message, never claims it was recorded prematurely |
+| Ambiguous request | Give an unclear purpose, then clarify it | Clarification rather than fabricated facts or premature handoff |
+| Interruption | Speak while the assistant responds | Stale playback stops and the caller can continue |
+| Language selection | Run calls in FR/EN/KO; optionally switch spoken language | Opening greeting and summary use selected locale; later replies follow caller speech |
+| Cleanup | End a call, refresh during a call, or disconnect | No stuck session; an unavailable summary does not prevent completion |
+
+Except for Echo, these manual scenarios require an API key and a supported Gemini Live model. AI behavior and transcription remain best-effort; if an issue occurs, record the locale, configured model, event order, and whether an unusual answer was **audible or only transcribed**. Do not put audio, real caller information or API keys in GitHub issues.
+
+
 
 ## Deliberate trade-offs and limitations
 
