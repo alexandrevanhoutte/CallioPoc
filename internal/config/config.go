@@ -18,12 +18,12 @@ const (
 )
 
 type Config struct {
-	BindHost       string
-	Port           string
-	AIProvider     string
-	GeminiAPIKey   string
-	GeminiModel    string
-	SummaryModel   string
+	BindHost     string
+	Port         string
+	AIProvider   string
+	GeminiAPIKey string
+	GeminiModel  string
+	SummaryModel string
 }
 
 func Load() (Config, error) {
@@ -68,11 +68,11 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		BindHost:       bindHost,
-		Port:           port,
-		AIProvider:     provider,
-		GeminiAPIKey:   os.Getenv("GEMINI_API_KEY"),
-		GeminiModel:    model,
-		SummaryModel:   summaryModel,
+		BindHost:     bindHost,
+		Port:         port,
+		AIProvider:   provider,
+		GeminiAPIKey: os.Getenv("GEMINI_API_KEY"),
+		GeminiModel:  model,
+		SummaryModel: summaryModel,
 	}, nil
 }

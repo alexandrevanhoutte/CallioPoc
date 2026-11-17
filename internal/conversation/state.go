@@ -45,11 +45,17 @@ func (s *State) Update(category string, updates []FieldUpdate, unavailable []str
 	known := make(map[string]string)
 	declined := make(map[string]bool)
 	if s.category == category {
-		for key, value := range s.known { known[key] = value }
-		for key, value := range s.unavailable { declined[key] = value }
+		for key, value := range s.known {
+			known[key] = value
+		}
+		for key, value := range s.unavailable {
+			declined[key] = value
+		}
 	} else if valid("caller_name") {
 		// Keep the caller's previously provided name when intent changes.
-		if name, ok := s.known["caller_name"]; ok { known["caller_name"] = name }
+		if name, ok := s.known["caller_name"]; ok {
+			known["caller_name"] = name
+		}
 	}
 	seen := make(map[string]bool)
 	for _, field := range updates {
@@ -83,8 +89,12 @@ func (s *State) Missing() []string {
 	}
 	var missing []string
 	for _, key := range policy.Required {
-		if _, known := s.known[key]; known { continue }
-		if s.unavailable[key] { continue }
+		if _, known := s.known[key]; known {
+			continue
+		}
+		if s.unavailable[key] {
+			continue
+		}
 		missing = append(missing, key)
 	}
 	return missing

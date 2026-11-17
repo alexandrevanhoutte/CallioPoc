@@ -62,14 +62,13 @@ func TestRun(t *testing.T) {
 	})
 }
 
-
 // testLogger proves that HTTP does not depend on slog or a concrete logger.
 type testLogger struct{}
 
-func (testLogger) Debug(string, ...any) {}
-func (testLogger) Info(string, ...any)  {}
-func (testLogger) Warn(string, ...any)  {}
-func (testLogger) Error(string, ...any) {}
+func (testLogger) Debug(string, ...any)         {}
+func (testLogger) Info(string, ...any)          {}
+func (testLogger) Warn(string, ...any)          {}
+func (testLogger) Error(string, ...any)         {}
 func (l testLogger) With(...any) logging.Logger { return l }
 
 var _ logging.Logger = testLogger{}

@@ -15,8 +15,8 @@ const (
 // turnState converts ordered Gemini output into provider-independent events.
 // Only the receiver goroutine owns it; session controls the SDK connection.
 type turnState struct {
-	id      uint64
-	active  bool
+	id          uint64
+	active      bool
 	interrupted bool
 	pending     []realtime.Event
 	transcripts transcriptionState

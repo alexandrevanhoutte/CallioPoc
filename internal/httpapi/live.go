@@ -21,7 +21,7 @@ const (
 	maxLiveMessageBytes = 4096
 	farewellGrace       = 2 * time.Second
 	defaultIdleTimeout  = 60 * time.Second
-	summaryTimeout = 25 * time.Second
+	summaryTimeout      = 25 * time.Second
 )
 
 // endPhase only tracks the audio shutdown handshake; CallLifecycle remains the
@@ -37,14 +37,14 @@ const (
 // One liveSession owns one browser connection and one provider session.
 // writes serializes WebSocket output; mu protects the farewell and idle state.
 type liveSession struct {
-	conn      *websocket.Conn
-	voice     realtime.VoiceSession
-	lifecycle *call.Lifecycle
-	locale    realtime.Locale
+	conn       *websocket.Conn
+	voice      realtime.VoiceSession
+	lifecycle  *call.Lifecycle
+	locale     realtime.Locale
 	summarizer call.Summarizer
 	l          logging.Logger
 	transcript realtime.Transcript
-	handoff *realtime.HandoffRequest
+	handoff    *realtime.HandoffRequest
 
 	writes sync.Mutex
 	mu     sync.Mutex
@@ -313,7 +313,9 @@ func (s *liveSession) readModel(ctx context.Context) error {
 		}
 		switch event.Type {
 		case realtime.EventAudio:
-			if s.lifecycle.State() == call.HandoffRequired { continue }
+			if s.lifecycle.State() == call.HandoffRequired {
+				continue
+			}
 			// Discard buffered generations after an interruption.
 			if event.TurnID != 0 && event.TurnID <= interruptedTurn {
 				continue
@@ -342,10 +344,14 @@ func (s *liveSession) readModel(ctx context.Context) error {
 				return err
 			}
 		case realtime.EventTranscript:
-			if event.Transcript == nil { continue }
+			if event.Transcript == nil {
+				continue
+			}
 			// Ignore speculative Gemini speech during an owner decision.
 			// It must not be shown or saved for summary.
-			if event.Transcript.Speaker == realtime.SpeakerAI && s.lifecycle.State() == call.HandoffRequired { continue }
+			if event.Transcript.Speaker == realtime.SpeakerAI && s.lifecycle.State() == call.HandoffRequired {
+				continue
+			}
 			s.touch()
 			s.mu.Lock()
 			s.transcript.Apply(*event.Transcript)
@@ -415,7 +421,9 @@ func (s *liveSession) readModel(ctx context.Context) error {
 				}
 				s.l.Info("assistant turn completed", "turn_id", event.TurnID)
 			}
-			if s.lifecycle.State() == call.HandoffRequired { continue }
+			if s.lifecycle.State() == call.HandoffRequired {
+				continue
+			}
 			if err := s.send(ctx, struct {
 				Type string `json:"type"`
 				Text string `json:"text"`
@@ -442,14 +450,14 @@ func (s *liveSession) sendSummary(ctx context.Context, reason call.EndReason) er
 	s.mu.Lock()
 	input := call.SummaryInput{
 		Transcript: s.transcript.Finalized(),
-		Handoff: s.handoff,
-		EndReason: reason,
-		Locale: s.locale,
+		Handoff:    s.handoff,
+		EndReason:  reason,
+		Locale:     s.locale,
 	}
 	s.mu.Unlock()
 	if s.summarizer == nil {
 		return s.send(ctx, struct {
-			Type string `json:"type"`
+			Type  string `json:"type"`
 			Error string `json:"error"`
 		}{Type: "summary_error", Error: "Summary service is unavailable"})
 	}
@@ -457,18 +465,20 @@ func (s *liveSession) sendSummary(ctx context.Context, reason call.EndReason) er
 	summaryCtx, cancel := context.WithTimeout(ctx, summaryTimeout)
 	defer cancel()
 	summary, err := s.summarizer.Summarize(summaryCtx, input)
-	if err == nil { err = summary.Validate() }
+	if err == nil {
+		err = summary.Validate()
+	}
 	if err != nil {
 		s.l.Warn("call summary unavailable", "error", err)
 		return s.send(ctx, struct {
-			Type string `json:"type"`
+			Type  string `json:"type"`
 			Error string `json:"error"`
 		}{Type: "summary_error", Error: "Unable to generate a call summary"})
 	}
 	// The backend owns handoff state; a generated summary cannot overwrite it.
 	summary.HandoffRequested = input.Handoff != nil
 	return s.send(ctx, struct {
-		Type string `json:"type"`
+		Type    string       `json:"type"`
 		Summary call.Summary `json:"summary"`
 	}{Type: "call_summary", Summary: summary})
 }

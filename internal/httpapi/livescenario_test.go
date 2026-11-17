@@ -26,18 +26,18 @@ type liveScenario struct {
 }
 
 type scenarioMessage struct {
-	Type    string `json:"type"`
-	State   string `json:"state"`
-	Outcome string `json:"outcome"`
-	Reason  string `json:"reason"`
-	Action  string `json:"action"`
-	Error   string `json:"error"`
-	ID      string `json:"segment_id"`
-	Speaker realtime.Speaker `json:"speaker"`
-	Text    string `json:"text"`
-	Final   bool `json:"final"`
+	Type    string                  `json:"type"`
+	State   string                  `json:"state"`
+	Outcome string                  `json:"outcome"`
+	Reason  string                  `json:"reason"`
+	Action  string                  `json:"action"`
+	Error   string                  `json:"error"`
+	ID      string                  `json:"segment_id"`
+	Speaker realtime.Speaker        `json:"speaker"`
+	Text    string                  `json:"text"`
+	Final   bool                    `json:"final"`
 	Context realtime.HandoffContext `json:"context"`
-	Summary call.Summary `json:"summary"`
+	Summary call.Summary            `json:"summary"`
 }
 
 func newLiveScenario(t *testing.T, locale string) *liveScenario {

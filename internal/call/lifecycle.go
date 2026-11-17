@@ -42,8 +42,8 @@ type HandoffProvider interface {
 }
 
 type Lifecycle struct {
-	mu sync.Mutex
-	state State
+	mu       sync.Mutex
+	state    State
 	provider HandoffProvider
 }
 

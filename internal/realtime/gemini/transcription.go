@@ -71,9 +71,9 @@ func (s *transcriptionState) update(speaker realtime.Speaker, value *genai.Trans
 			order = s.nextOrder
 		}
 		stream.current = &realtime.TranscriptSegment{
-			ID: fmt.Sprintf("%s-%d", prefix, stream.sequence),
-			Order: order,
-			Speaker: speaker,
+			ID:        fmt.Sprintf("%s-%d", prefix, stream.sequence),
+			Order:     order,
+			Speaker:   speaker,
 			Timestamp: time.Now().UTC(),
 		}
 	}

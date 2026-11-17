@@ -39,7 +39,9 @@ func New(ctx context.Context, apiKey, model string) (*Provider, error) {
 }
 
 func (p *Provider) Open(ctx context.Context, locale realtime.Locale) (realtime.VoiceSession, error) {
-	if _, err := realtime.NewLocale(locale.String()); err != nil { return nil, err }
+	if _, err := realtime.NewLocale(locale.String()); err != nil {
+		return nil, err
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -68,10 +70,10 @@ func (p *Provider) Open(ctx context.Context, locale realtime.Locale) (realtime.V
 func liveConfig() *genai.LiveConnectConfig {
 	silenceDuration := int32(500)
 	return &genai.LiveConnectConfig{
-		ResponseModalities: []genai.Modality{genai.ModalityAudio},
+		ResponseModalities:       []genai.Modality{genai.ModalityAudio},
 		InputAudioTranscription:  &genai.AudioTranscriptionConfig{},
 		OutputAudioTranscription: &genai.AudioTranscriptionConfig{},
-		Tools: geminiTools(),
+		Tools:                    geminiTools(),
 		SystemInstruction: &genai.Content{
 			Parts: []*genai.Part{{Text: realtime.ReceptionistInstructions}},
 		},
@@ -91,13 +93,13 @@ type session struct {
 	l         logging.Logger
 
 	// Only Receive accesses this; the send goroutine never touches it.
-	turns turnState
-	handoff realtime.OnceHandoffDetector
-	context *conversation.State
-	handoffPending atomic.Bool
+	turns           turnState
+	handoff         realtime.OnceHandoffDetector
+	context         *conversation.State
+	handoffPending  atomic.Bool
 	messageRecorded bool
-	notePurpose string
-	noteSummary string
+	notePurpose     string
+	noteSummary     string
 }
 
 func (s *session) SendAudio(ctx context.Context, pcm16 []byte) error {
@@ -166,30 +168,44 @@ func (s *session) Close() error {
 // handleToolCalls acknowledges every Gemini tool call, including invalid requests.
 // It only emits a validated handoff once per session.
 func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
-  responses, err := s.buildToolResponses(toolCall)
-  if err != nil { return err }
-  if len(responses) == 0 { return nil }
-  if err := s.live.SendToolResponse(genai.LiveToolResponseInput{FunctionResponses: responses}); err != nil {
-    return fmt.Errorf("send Gemini tool responses: %w", err)
-  }
-  return nil
+	responses, err := s.buildToolResponses(toolCall)
+	if err != nil {
+		return err
+	}
+	if len(responses) == 0 {
+		return nil
+	}
+	if err := s.live.SendToolResponse(genai.LiveToolResponseInput{FunctionResponses: responses}); err != nil {
+		return fmt.Errorf("send Gemini tool responses: %w", err)
+	}
+	return nil
 }
 
 // buildToolResponses is independent of the transport and can be tested without Gemini.
 func (s *session) buildToolResponses(toolCall *genai.LiveServerToolCall) ([]*genai.FunctionResponse, error) {
-	if s.context == nil { s.context = conversation.NewState(conversation.Default()) }
+	if s.context == nil {
+		s.context = conversation.NewState(conversation.Default())
+	}
 	responses := make([]*genai.FunctionResponse, 0, len(toolCall.FunctionCalls))
 	contextUpdated := false
 	hasContextCall := false
 	hasMessageCall := false
 	hasHandoffCall := false
 	for _, candidate := range toolCall.FunctionCalls {
-		if candidate != nil && candidate.Name == setCallContextName { hasContextCall = true }
-		if candidate != nil && candidate.Name == recordMessageName { hasMessageCall = true }
-		if candidate != nil && candidate.Name == handoffToolName { hasHandoffCall = true }
+		if candidate != nil && candidate.Name == setCallContextName {
+			hasContextCall = true
+		}
+		if candidate != nil && candidate.Name == recordMessageName {
+			hasMessageCall = true
+		}
+		if candidate != nil && candidate.Name == handoffToolName {
+			hasHandoffCall = true
+		}
 	}
 	for _, call := range toolCall.FunctionCalls {
-		if call == nil { continue }
+		if call == nil {
+			continue
+		}
 		s.l.Info("Gemini function requested", "name", call.Name, "call_id", call.ID)
 		response := &genai.FunctionResponse{ID: call.ID, Name: call.Name}
 		switch call.Name {
@@ -200,11 +216,11 @@ func (s *session) buildToolResponses(toolCall *genai.LiveServerToolCall) ([]*gen
 				policy, err = s.context.Update(category, fields, unavailable)
 				if err == nil {
 					response.Response = map[string]any{
-						"output": "context updated; ask one question at a time for any missing field",
-						"category": policy.ID,
-						"missing_fields": s.context.Missing(),
+						"output":            "context updated; ask one question at a time for any missing field",
+						"category":          policy.ID,
+						"missing_fields":    s.context.Missing(),
 						"available_actions": policy.Actions,
-						"instructions": policy.Instructions,
+						"instructions":      policy.Instructions,
 					}
 					contextUpdated = true
 				}
@@ -244,10 +260,14 @@ func (s *session) buildToolResponses(toolCall *genai.LiveServerToolCall) ([]*gen
 						response.Response = map[string]any{"error": "caller_name does not match collected call context"}
 						break
 					}
-					if request.Context.CallerName == nil { request.Context.CallerName = &name }
+					if request.Context.CallerName == nil {
+						request.Context.CallerName = &name
+					}
 				}
 				emit, err := s.handoff.Detect(request)
-				if err != nil { return nil, err }
+				if err != nil {
+					return nil, err
+				}
 				if emit {
 					s.handoffPending.Store(true)
 					s.l.Info("handoff requested; owner decision pending", "reason", request.Reason.String(), "call_id", call.ID)
@@ -290,14 +310,16 @@ func (s *session) buildToolResponses(toolCall *genai.LiveServerToolCall) ([]*gen
 }
 
 func (s *session) NotifyHandoffOutcome(ctx context.Context, outcome string) error {
-	if err := ctx.Err(); err != nil { return err }
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	instruction, err := realtime.HandoffOutcomePrompt(outcome)
 	if err != nil {
 		return err
 	}
 	if err := s.live.SendClientContent(genai.LiveClientContentInput{
 		Turns: []*genai.Content{{
-			Role: "user",
+			Role:  "user",
 			Parts: []*genai.Part{{Text: instruction}},
 		}},
 	}); err != nil {

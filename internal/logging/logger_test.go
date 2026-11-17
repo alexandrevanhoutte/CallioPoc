@@ -29,7 +29,9 @@ func entries(t *testing.T, data string) []map[string]any {
 func TestJSONLevelAndFields(t *testing.T) {
 	var output bytes.Buffer
 	logger, err := New(&output, "info")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	logger.Debug("hidden")
 	logger.Info("server started", "addr", "127.0.0.1:8080")
 	logger.Error("failed", "status", 503)
@@ -50,12 +52,16 @@ func TestJSONLevelAndFields(t *testing.T) {
 func TestComponentAndWithDoNotMutateParent(t *testing.T) {
 	var output bytes.Buffer
 	logger, err := New(&output, "debug")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	child := logger.With("component", "gemini.live").With("session_id", "test")
 	child.Debug("child")
 	logger.Info("root")
 	records := entries(t, output.String())
-	if len(records) != 2 { t.Fatalf("expected 2 records, got %d", len(records)) }
+	if len(records) != 2 {
+		t.Fatalf("expected 2 records, got %d", len(records))
+	}
 	if records[0]["component"] != "gemini.live" || records[0]["session_id"] != "test" {
 		t.Fatalf("child missing attributes: %#v", records[0])
 	}
@@ -66,7 +72,9 @@ func TestComponentAndWithDoNotMutateParent(t *testing.T) {
 
 func TestSupportedLevelsAndInvalidConfig(t *testing.T) {
 	for _, level := range []string{"", "info", "INFO", "debug", "warn", "error"} {
-		if _, err := New(&bytes.Buffer{}, level); err != nil { t.Errorf("%q: %v", level, err) }
+		if _, err := New(&bytes.Buffer{}, level); err != nil {
+			t.Errorf("%q: %v", level, err)
+		}
 	}
 	for _, level := range []string{"trace", "verbose", "off"} {
 		if _, err := New(&bytes.Buffer{}, level); err == nil {
@@ -76,14 +84,20 @@ func TestSupportedLevelsAndInvalidConfig(t *testing.T) {
 			t.Errorf("invalid Init level %q accepted", level)
 		}
 	}
-	if _, err := New(nil, "info"); err == nil { t.Fatal("nil output accepted") }
-	if L() == nil || For("httpapi") == nil { t.Fatal("root/fallback logger missing") }
+	if _, err := New(nil, "info"); err == nil {
+		t.Fatal("nil output accepted")
+	}
+	if L() == nil || For("httpapi") == nil {
+		t.Fatal("root/fallback logger missing")
+	}
 }
 
 func TestConcurrentStructuredLogging(t *testing.T) {
 	var output bytes.Buffer
 	logger, err := New(&output, "debug")
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	const workers, messages = 8, 25
 	var wg sync.WaitGroup
 	for i := 0; i < workers; i++ {

@@ -9,8 +9,8 @@ import (
 
 func TestParseCallContext(t *testing.T) {
 	category, fields, unavailable, err := parseCallContext(map[string]any{
-		"category": "recruiting",
-		"fields": []any{map[string]any{"key": "caller_name", "value": "Thomas"}},
+		"category":           "recruiting",
+		"fields":             []any{map[string]any{"key": "caller_name", "value": "Thomas"}},
 		"unavailable_fields": []any{"position"},
 	})
 	if err != nil || category != "recruiting" || len(fields) != 1 || fields[0].Value != "Thomas" || len(unavailable) != 1 {

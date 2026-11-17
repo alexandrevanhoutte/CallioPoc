@@ -5,8 +5,8 @@ import (
 	"io/fs"
 	"net/http"
 
-	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/call"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
 )
 
 // NewRouter registers HTTP routes. Dependencies are provided by the caller.

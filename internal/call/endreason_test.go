@@ -5,7 +5,7 @@ import "testing"
 func TestEndReasonString(t *testing.T) {
 	cases := []struct {
 		reason EndReason
-		want string
+		want   string
 	}{
 		{EndUnknown, "unknown"},
 		{EndCallerFinished, "caller_finished"},

@@ -370,6 +370,14 @@ GOPROXY=off go vet -mod=vendor ./...
 node --test tests/*.test.cjs tests/*.test.mjs   # optional: Node.js 22+
 ```
 
+
+Go source formatting (excluding vendored dependencies) is checked in CI. To list files that need formatting and to fix them locally:
+
+```bash
+gofmt -l cmd internal
+gofmt -w cmd internal
+```
+
 ### Conversation scenarios
 
 Run the deterministic Go scenarios without a microphone, Gemini credentials or external network access:
