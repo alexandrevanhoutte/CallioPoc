@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/alexandrevanhoutte/CallioPoc/internal/conversation"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/logging"
@@ -93,6 +94,7 @@ type session struct {
 	turns turnState
 	handoff realtime.OnceHandoffDetector
 	context *conversation.State
+	handoffPending atomic.Bool
 	messageRecorded bool
 	notePurpose string
 	noteSummary string
@@ -164,14 +166,27 @@ func (s *session) Close() error {
 // handleToolCalls acknowledges every Gemini tool call, including invalid requests.
 // It only emits a validated handoff once per session.
 func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
+  responses, err := s.buildToolResponses(toolCall)
+  if err != nil { return err }
+  if len(responses) == 0 { return nil }
+  if err := s.live.SendToolResponse(genai.LiveToolResponseInput{FunctionResponses: responses}); err != nil {
+    return fmt.Errorf("send Gemini tool responses: %w", err)
+  }
+  return nil
+}
+
+// buildToolResponses is independent of the transport and can be tested without Gemini.
+func (s *session) buildToolResponses(toolCall *genai.LiveServerToolCall) ([]*genai.FunctionResponse, error) {
 	if s.context == nil { s.context = conversation.NewState(conversation.Default()) }
 	responses := make([]*genai.FunctionResponse, 0, len(toolCall.FunctionCalls))
 	contextUpdated := false
 	hasContextCall := false
 	hasMessageCall := false
+	hasHandoffCall := false
 	for _, candidate := range toolCall.FunctionCalls {
 		if candidate != nil && candidate.Name == setCallContextName { hasContextCall = true }
 		if candidate != nil && candidate.Name == recordMessageName { hasMessageCall = true }
+		if candidate != nil && candidate.Name == handoffToolName { hasHandoffCall = true }
 	}
 	for _, call := range toolCall.FunctionCalls {
 		if call == nil { continue }
@@ -198,7 +213,9 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 				response.Response = map[string]any{"error": err.Error(), "output": "correct the call context before requesting action"}
 			}
 		case endCallToolName:
-			if hasMessageCall {
+			if s.handoffPending.Load() || hasHandoffCall {
+				response.Response = map[string]any{"error": "cannot complete a call with a pending handoff; wait for the owner decision"}
+			} else if hasMessageCall {
 				response.Response = map[string]any{"error": "wait for a subsequent caller reply after recording a note; do not conclude this call immediately"}
 			} else if call.Args["reason"] != "conversation_finished" {
 				response.Response = map[string]any{"error": "invalid call end reason"}
@@ -209,6 +226,8 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 			}
 		case handoffToolName:
 			switch {
+			case s.handoffPending.Load():
+				response.Response = map[string]any{"error": "handoff already pending; wait for the owner decision"}
 			case hasContextCall || contextUpdated:
 				response.Response = map[string]any{"error": "do not request an action in the same tool batch as updating call context; wait for the next turn"}
 			case s.context.Allow(handoffToolName) != nil:
@@ -228,17 +247,24 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 					if request.Context.CallerName == nil { request.Context.CallerName = &name }
 				}
 				emit, err := s.handoff.Detect(request)
-				if err != nil { return err }
+				if err != nil { return nil, err }
 				if emit {
-					s.l.Info("handoff accepted", "reason", request.Reason.String(), "call_id", call.ID)
+					s.handoffPending.Store(true)
+					s.l.Info("handoff requested; owner decision pending", "reason", request.Reason.String(), "call_id", call.ID)
 					s.turns.pending = append(s.turns.pending, realtime.Event{Type: realtime.EventHandoffRequired, Handoff: &request})
+					response.Response = map[string]any{"output": "handoff pending owner decision; no message recorded, delivered or transfer completed; wait silently for accept/decline/no_answer"}
+					response.Scheduling = genai.FunctionResponseSchedulingSilent
 				} else {
 					s.l.Info("duplicate handoff ignored", "call_id", call.ID)
+					response.Response = map[string]any{"error": "handoff already requested for this call"}
 				}
-				response.Response = map[string]any{"output": "handoff request recorded; no transfer performed"}
 			}
 		case recordMessageName:
 			switch {
+			case hasHandoffCall:
+				response.Response = map[string]any{"error": "cannot record a note in the same tool batch as requesting handoff"}
+			case s.handoffPending.Load():
+				response.Response = map[string]any{"error": "handoff pending; offer to take a note only after decline or no answer"}
 			case hasContextCall || contextUpdated:
 				response.Response = map[string]any{"error": "wait until the context update is acknowledged before recording a message"}
 			case s.context.Allow(recordMessageName) != nil:
@@ -260,11 +286,7 @@ func (s *session) handleToolCalls(toolCall *genai.LiveServerToolCall) error {
 		}
 		responses = append(responses, response)
 	}
-	if len(responses) == 0 { return nil }
-	if err := s.live.SendToolResponse(genai.LiveToolResponseInput{FunctionResponses: responses}); err != nil {
-		return fmt.Errorf("send Gemini tool responses: %w", err)
-	}
-	return nil
+	return responses, nil
 }
 
 func (s *session) NotifyHandoffOutcome(ctx context.Context, outcome string) error {
@@ -281,5 +303,6 @@ func (s *session) NotifyHandoffOutcome(ctx context.Context, outcome string) erro
 	}); err != nil {
 		return fmt.Errorf("notify Gemini of handoff outcome: %w", err)
 	}
+	s.handoffPending.Store(false)
 	return nil
 }
