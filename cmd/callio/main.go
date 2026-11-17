@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -11,17 +10,24 @@ import (
 	"github.com/alexandrevanhoutte/CallioPoc/internal/call"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/config"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/httpapi"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/logging"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
 	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime/gemini"
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	logger := logging.For("main")
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Error("load configuration", "error", err)
 		os.Exit(1)
 	}
+
+	if err := logging.Init(os.Getenv("LOG_LEVEL")); err != nil {
+		logger.Error("initialize logging", "error", err)
+		os.Exit(1)
+	}
+	logger = logging.For("main")
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -47,7 +53,7 @@ func main() {
 
 	router := httpapi.NewRouter(ctx, os.DirFS("web"), provider, summarizer)
 	server := httpapi.NewServer(net.JoinHostPort(cfg.BindHost, cfg.Port), router)
-	if err := httpapi.Run(ctx, server, logger); err != nil {
+	if err := httpapi.Run(ctx, server, logging.For("httpapi.server")); err != nil {
 		logger.Error("HTTP server stopped with error", "error", err)
 		os.Exit(1)
 	}

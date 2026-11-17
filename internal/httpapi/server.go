@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/alexandrevanhoutte/CallioPoc/internal/logging"
 )
 
 const shutdownTimeout = 10 * time.Second
@@ -22,7 +23,10 @@ func NewServer(addr string, handler http.Handler) *http.Server {
 }
 
 // Run serves until an error or context cancellation, then closes gracefully.
-func Run(ctx context.Context, server *http.Server, logger *slog.Logger) error {
+func Run(ctx context.Context, server *http.Server, logger logging.Logger) error {
+	if logger == nil {
+		logger = logging.For("httpapi.server")
+	}
 	listener, err := net.Listen("tcp", server.Addr)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)
