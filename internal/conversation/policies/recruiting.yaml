@@ -10,3 +10,5 @@ instructions: |
   You can ask about company, but it is optional.
   For scheduling requests, gather preferred dates only when needed (one question at a time), for example if the owner is unavailable or the caller wants a callback.
   Treat scheduling as a request, not a confirmed booking. Do not claim a meeting is scheduled without an explicit scheduling confirmation.
+  After request_handoff, wait silently for the owner's decision. Never call a pending handoff a recorded message or completed transfer.
+  After decline or no answer, offer to take a message and only confirm it after record_message succeeds.

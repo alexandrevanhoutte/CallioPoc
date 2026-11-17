@@ -874,3 +874,61 @@ func TestAudioStreamEndRejectedDuringHumanTakeover(t *testing.T) {
 	default:
 	}
 }
+
+func TestLiveHandoffMutesGeneratedSpeechAndTranscriptUntilOutcome(t *testing.T) {
+  ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+  defer cancel()
+  provider := &fakeVoiceProvider{}
+  server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, realtime.LocaleFrench))
+  defer server.Close()
+  conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+  if err != nil { t.Fatal(err) }
+  defer conn.CloseNow()
+
+  // Initialize the provider and verify that audio normally passes through.
+  if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 640)); err != nil { t.Fatal(err) }
+  if kind, _, err := conn.Read(ctx); err != nil || kind != websocket.MessageBinary {
+    t.Fatalf("expected initial audio, kind=%v err=%v", kind, err)
+  }
+  provider.mu.Lock()
+  s := provider.session
+  provider.mu.Unlock()
+
+  s.events <- realtime.Event{Type: realtime.EventHandoffRequired, Handoff: &realtime.HandoffRequest{
+    Reason: realtime.HandoffOwnerRequested,
+    Context: realtime.HandoffContext{Purpose: "Recruitment", Summary: "Caller asks for an interview"},
+  }}
+  for _, expected := range []string{"handoff_required", "call_state"} {
+    kind, body, err := conn.Read(ctx)
+    if err != nil || kind != websocket.MessageText || !bytes.Contains(body, []byte(`"type":"`+expected+`"`)) {
+      t.Fatalf("expected %s, kind=%v body=%s err=%v", expected, kind, body, err)
+    }
+  }
+  // The caller transcript is a deterministic barrier; if any unwanted
+  // audio, AI transcript, or turn_end escaped the gate, it arrives first.
+  s.events <- realtime.Event{Type: realtime.EventAudio, TurnID: 7, Audio: make([]byte, 960), SampleRate: 24000}
+  s.events <- realtime.Event{Type: realtime.EventTranscript, Transcript: &realtime.TranscriptSegment{
+    ID: "ai-unwanted", Speaker: realtime.SpeakerAI, Text: "La demande a été notée", Final: true,
+  }}
+  s.events <- realtime.Event{Type: realtime.EventTurnEnd, TurnID: 7}
+  s.events <- realtime.Event{Type: realtime.EventTranscript, Transcript: &realtime.TranscriptSegment{
+    ID: "caller-barrier", Speaker: realtime.SpeakerCaller, Text: "Oui", Final: true,
+  }}
+  kind, body, err := conn.Read(ctx)
+  if err != nil || kind != websocket.MessageText ||
+    !bytes.Contains(body, []byte(`"type":"transcript"`)) ||
+    !bytes.Contains(body, []byte(`"segment_id":"caller-barrier"`)) {
+    t.Fatalf("output escaped while handoff pending: kind=%v body=%s err=%v", kind, body, err)
+  }
+  if err := conn.Write(ctx, websocket.MessageText, []byte(`{"type":"decline"}`)); err != nil { t.Fatal(err) }
+  kind, body, err = conn.Read(ctx)
+  if err != nil || kind != websocket.MessageText || !bytes.Contains(body, []byte(`"state":"ai_active"`)) {
+    t.Fatalf("decline did not resume session: %s err=%v", body, err)
+  }
+  // After an explicit outcome, new assistant audio can be forwarded.
+  s.events <- realtime.Event{Type: realtime.EventAudio, TurnID: 8, Audio: make([]byte, 960), SampleRate: 24000}
+  kind, body, err = conn.Read(ctx)
+  if err != nil || kind != websocket.MessageBinary || len(body) != 960 {
+    t.Fatalf("assistant did not resume after decline: kind=%v bytes=%d err=%v", kind, len(body), err)
+  }
+}

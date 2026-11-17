@@ -313,6 +313,7 @@ func (s *liveSession) readModel(ctx context.Context) error {
 		}
 		switch event.Type {
 		case realtime.EventAudio:
+			if s.lifecycle.State() == call.HandoffRequired { continue }
 			// Discard buffered generations after an interruption.
 			if event.TurnID != 0 && event.TurnID <= interruptedTurn {
 				continue
@@ -333,7 +334,7 @@ func (s *liveSession) readModel(ctx context.Context) error {
 			ready := s.phase != endAwaitingPlayback
 			s.mu.Unlock()
 			state := s.lifecycle.State()
-			if ready && state != call.HumanActive && state != call.Completed {
+			if ready && state != call.HandoffRequired && state != call.HumanActive && state != call.Completed {
 				err = s.conn.Write(ctx, websocket.MessageBinary, event.Audio)
 			}
 			s.writes.Unlock()
@@ -341,9 +342,10 @@ func (s *liveSession) readModel(ctx context.Context) error {
 				return err
 			}
 		case realtime.EventTranscript:
-			if event.Transcript == nil {
-				continue
-			}
+			if event.Transcript == nil { continue }
+			// Ignore speculative Gemini speech during an owner decision.
+			// It must not be shown or saved for summary.
+			if event.Transcript.Speaker == realtime.SpeakerAI && s.lifecycle.State() == call.HandoffRequired { continue }
 			s.touch()
 			s.mu.Lock()
 			s.transcript.Apply(*event.Transcript)
@@ -361,6 +363,9 @@ func (s *liveSession) readModel(ctx context.Context) error {
 				return err
 			}
 		case realtime.EventHandoffRequired:
+			s.mu.Lock()
+			s.aiSpeaking = false
+			s.mu.Unlock()
 			if event.Handoff == nil {
 				return errors.New("missing handoff request")
 			}
@@ -410,6 +415,7 @@ func (s *liveSession) readModel(ctx context.Context) error {
 				}
 				s.l.Info("assistant turn completed", "turn_id", event.TurnID)
 			}
+			if s.lifecycle.State() == call.HandoffRequired { continue }
 			if err := s.send(ctx, struct {
 				Type string `json:"type"`
 				Text string `json:"text"`

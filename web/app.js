@@ -318,7 +318,7 @@ startButton.addEventListener("click", async () => {
       if (session === current) inspector.record(event);
     },
     onChunk: (buffer) => {
-      if (session !== current || current.callState === "human_active" || current.callState === "completed") return;
+      if (session !== current || current.callState === "handoff_required" || current.callState === "human_active" || current.callState === "completed") return;
       received.value = String(Number(received.value) + 1);
       if (live && new Uint8Array(buffer).every((byte) => byte === 0)) {
         silentChunks.value = String(Number(silentChunks.value) + 1);
@@ -364,6 +364,7 @@ startButton.addEventListener("click", async () => {
       if (event.type === "call_state") {
         if (!["ai_active", "handoff_required", "human_active", "completed"].includes(event.state)) return;
         showCallState(current, event.state, event.outcome);
+        if (event.state === "handoff_required") { current.player.clear(); current.generationFinished = true; }
         if (event.state === "human_active") {
           current.gate?.reset();
           current.player.clear();
@@ -401,7 +402,10 @@ startButton.addEventListener("click", async () => {
         for (const { button } of handoffButtons) button.disabled = current.callState !== "handoff_required";
       }
       if (event.type === "handoff_required") {
-        console.info("Callio handoff_required received", event);
+        current.callState = "handoff_required";
+        current.player.clear();
+        current.generationFinished = true;
+        console.info("Callio handoff_required received");
         transcript.addHandoff(event);
       }
       if (event.type === "turn_end" && current.callState !== "human_active") {
