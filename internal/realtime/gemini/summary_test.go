@@ -35,15 +35,18 @@ func TestSummarizerContract(t *testing.T) {
 }
 
 func TestNoFinalizedTranscriptDoesNotCallModel(t *testing.T) {
+	for _, locale := range []realtime.Locale{realtime.LocaleFrench, realtime.LocaleEnglish, realtime.LocaleKorean} {
 	s := &Summarizer{}
 	out, err := s.Summarize(context.Background(), call.SummaryInput{
+		Locale: locale,
 		Transcript: []realtime.TranscriptSegment{{
 			ID: "caller-1", Speaker: realtime.SpeakerCaller, Text: "unfinished",
 			Final: false,
 		}},
 	})
-	if err != nil || out.Text == "" || out.Urgency != "unknown" || out.CallerName != nil {
+	if err != nil || out.Text != realtime.EmptyTranscriptSummary(locale) || out.Urgency != "unknown" || out.CallerName != nil {
 		t.Fatalf("fallback summary must be factual without model: %+v, %v", out, err)
+	}
 	}
 }
 

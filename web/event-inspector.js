@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 // Keep protocol inspection bounded and independent of the audio hot path.
 // Only transport metadata is accepted: never store PCM or JSON message bodies.
 export const MAX_TRAFFIC_EVENTS = 200;
@@ -77,7 +79,7 @@ export class EventInspector {
       const fields = [
         ["event-time", new Date(event.timestamp).toLocaleTimeString("en-GB", { hour12: false })],
         ["event-direction", event.direction.toUpperCase()],
-        ["event-type", event.kind === "binary" ? "Audio frame (PCM16)" : event.type],
+        ["event-type", event.kind === "binary" ? t("events.audioFrame") : event.type],
         ["event-size", event.size + " B"],
       ];
       for (const [className, value] of fields) {
@@ -90,8 +92,10 @@ export class EventInspector {
       return row;
     });
     this.list.replaceChildren(...rows);
-    this.count.textContent = events.length + " shown · " + this.log.entries.length +
-      " buffered (max " + this.log.limit + ")";
+    this.list.dataset.emptyMessage = t("events.empty");
+    this.count.textContent = t("events.count", {
+      shown: events.length, total: this.log.entries.length, limit: this.log.limit,
+    });
     this.clearButton.disabled = this.log.entries.length === 0;
   }
 }

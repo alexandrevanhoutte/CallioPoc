@@ -1,191 +1,200 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr-FR">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0b1020" />
-    <meta name="description" content="Try Callio, a local AI receptionist demo, in your browser." />
+    <meta name="description" content="Try Callio, a local AI receptionist demo, in your browser." data-i18n-content="page.description" />
     <title>Callio — Local playground</title>
     <link rel="stylesheet" href="/style.css" />
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="/boot.js"></script>
   </head>
   <body>
     <div class="shell">
       <header class="site-header">
-        <a class="brand" href="/" aria-label="Callio home">
+        <a class="brand" href="/" aria-label="Callio home" data-i18n-aria-label="brand.home">
           <span class="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 36 36" fill="none"><path d="M7 18h4m3-7v14m5-20v26m5-21v16m5-10h-2" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg>
           </span>
-          <span class="brand-name">Callio <small>Playground</small></span>
+          <span class="brand-name">Callio <small data-i18n="brand.playground">Playground</small></span>
         </a>
-        <div class="connection" aria-label="Local backend connection">
+        <div class="header-controls">
+          <label class="language-select" for="language-select"><span data-i18n="language.label">Language</span>
+            <select id="language-select" aria-label="Language" data-i18n-aria-label="language.label">
+              <option value="fr-FR">Français</option>
+              <option value="en-US">English</option>
+              <option value="ko-KR">한국어</option>
+            </select>
+          </label>
+        <div class="connection" aria-label="Local backend connection" data-i18n-aria-label="backend.connectionLabel">
           <span id="health-dot" class="status-dot" aria-hidden="true"></span>
-          <span id="health-status" role="status">Checking backend…</span>
-          <button id="check-health" class="text-button" type="button" hidden>Retry connection</button>
+          <span id="health-status" role="status" data-i18n="backend.checking">Checking backend…</span>
+          <button id="check-health" class="text-button" type="button" hidden data-i18n="backend.retry">Retry connection</button>
+        </div>
         </div>
       </header>
 
       <main>
         <div class="intro">
           <div class="intro-copy">
-            <p class="eyebrow">YOUR AI RECEPTIONIST · LOCAL DEMO</p>
-            <h1>Put Callio to the test<span class="accent-period">.</span></h1>
-            <p>Have a conversation, try a handoff, and see what Callio understood — all from your browser.</p>
+            <p class="eyebrow" data-i18n="intro.eyebrow">YOUR AI RECEPTIONIST · LOCAL DEMO</p>
+            <h1><span data-i18n="intro.title">Put Callio to the test</span><span class="accent-period">.</span></h1>
+            <p data-i18n="intro.description">Have a conversation, try a handoff, and see what Callio understood — all from your browser.</p>
           </div>
-          <div class="local-note"><span class="local-note-dot" aria-hidden="true"></span><span><strong>Runs locally</strong><small>No real phone calls or transfers</small></span></div>
+          <div class="local-note"><span class="local-note-dot" aria-hidden="true"></span><span><strong data-i18n="intro.local">Runs locally</strong><small data-i18n="intro.noRealCalls">No real phone calls or transfers</small></span></div>
         </div>
 
         <div class="workspace">
           <section class="panel call-panel" aria-labelledby="call-heading">
             <div class="panel-heading">
-              <div class="heading-with-step"><span class="step">01</span><div><p class="section-kicker">GET STARTED</p><h2 id="call-heading">Start a test call</h2></div></div>
-              <span id="call-state" class="state-pill" role="status">Inactive</span>
+              <div class="heading-with-step"><span class="step">01</span><div><p class="section-kicker" data-i18n="call.section">GET STARTED</p><h2 id="call-heading" data-i18n="call.heading">Start a test call</h2></div></div>
+              <span id="call-state" class="state-pill" role="status" data-i18n="call.state.inactive">Inactive</span>
             </div>
 
             <fieldset id="stream-mode" class="mode-fieldset" aria-describedby="mode-help">
-              <legend>Choose a mode</legend>
+              <legend data-i18n="call.mode.choose">Choose a mode</legend>
               <div class="mode-options">
                 <label class="mode-option">
                   <input type="radio" name="mode" value="live" checked />
-                  <span class="mode-option-body"><span class="mode-icon ai-icon" aria-hidden="true">✦</span><span class="mode-label"><strong>Talk to Callio</strong><small>Gemini Live · AI conversation</small></span><span class="mode-indicator" aria-hidden="true"></span></span>
+                  <span class="mode-option-body"><span class="mode-icon ai-icon" aria-hidden="true">✦</span><span class="mode-label"><strong data-i18n="call.mode.liveTitle">Talk to Callio</strong><small data-i18n="call.mode.liveDetail">Gemini Live · AI conversation</small></span><span class="mode-indicator" aria-hidden="true"></span></span>
                 </label>
                 <label class="mode-option">
                   <input type="radio" name="mode" value="echo" />
-                  <span class="mode-option-body"><span class="mode-icon echo-icon" aria-hidden="true">↗</span><span class="mode-label"><strong>Test my microphone</strong><small>Echo · no API key needed</small></span><span class="mode-indicator" aria-hidden="true"></span></span>
+                  <span class="mode-option-body"><span class="mode-icon echo-icon" aria-hidden="true">↗</span><span class="mode-label"><strong data-i18n="call.mode.echoTitle">Test my microphone</strong><small data-i18n="call.mode.echoDetail">Echo · no API key needed</small></span><span class="mode-indicator" aria-hidden="true"></span></span>
                 </label>
               </div>
             </fieldset>
-            <p id="mode-help" class="field-help">Speak naturally with your AI receptionist. A Gemini API key is required.</p>
+            <p id="mode-help" class="field-help" data-i18n="call.mode.help">Speak naturally with your AI receptionist. A Gemini API key is required.</p>
             <p id="setup-notice" class="notice" role="status" hidden></p>
 
             <div class="mic-box">
               <div class="mic-heading">
                 <span class="mic-avatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><rect x="9" y="3" width="6" height="12" rx="3" stroke="currentColor" stroke-width="1.8"/><path d="M5.5 10.5a6.5 6.5 0 0 0 13 0M12 17v4m-4 0h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
-                <div><strong>Microphone</strong><span id="mic-status" role="status">Not active</span></div>
+                <div><strong data-i18n="mic.title">Microphone</strong><span id="mic-status" role="status" data-i18n="mic.inactive">Not active</span></div>
                 <span class="mic-ready" aria-hidden="true"></span>
               </div>
-              <label for="mic-level" class="subtle-label">Input level</label>
+              <label for="mic-level" class="subtle-label" data-i18n="mic.inputLevel">Input level</label>
               <progress id="mic-level" max="100" value="0">0%</progress>
-              <p id="mic-signal" class="field-help" role="status">Your audio level will appear here.</p>
+              <p id="mic-signal" class="field-help" role="status" data-i18n="mic.levelHint">Your audio level will appear here.</p>
             </div>
 
             <div class="call-actions">
-              <button id="mic-start" class="primary-button" type="button"><img class="phone-icon" src="/assets/phone.webp" alt="" aria-hidden="true" width="20" height="20" /><span>Start conversation</span></button>
-              <button id="mic-stop" class="danger-button" type="button" disabled hidden>End call</button>
-              <p class="call-hint">Allow microphone access when prompted. Headphones recommended.</p>
+              <button id="mic-start" class="primary-button" type="button"><img class="phone-icon" src="/assets/phone.webp" alt="" aria-hidden="true" width="20" height="20" /><span data-i18n="call.start">Start conversation</span></button>
+              <button id="mic-stop" class="danger-button" type="button" disabled hidden data-i18n="call.end">End call</button>
+              <p class="call-hint" data-i18n="call.headphonesHint">Allow microphone access when prompted. Headphones recommended.</p>
             </div>
           </section>
 
           <section class="panel transcript-panel" aria-labelledby="conversation-heading">
             <div class="panel-heading conversation-heading">
-              <div class="heading-with-step"><span class="step">02</span><div><p class="section-kicker">REAL-TIME</p><h2 id="conversation-heading">Conversation</h2></div></div>
-              <span id="ai-status" class="secondary-status" role="status">Idle</span>
+              <div class="heading-with-step"><span class="step">02</span><div><p class="section-kicker" data-i18n="transcript.section">REAL-TIME</p><h2 id="conversation-heading" data-i18n="transcript.title">Conversation</h2></div></div>
+              <span id="ai-status" class="secondary-status" role="status" data-i18n="call.state.idle">Idle</span>
             </div>
             <div class="transcript-stage">
               <div id="transcript-list" class="transcript-list" role="log" aria-live="off"></div>
               <p id="transcript-announcement" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></p>
               <div class="transcript-empty" aria-hidden="true">
                 <div class="empty-icon"><svg viewBox="0 0 48 48" fill="none"><path d="M12 15h24a7 7 0 0 1 7 7v9a7 7 0 0 1-7 7H23l-9 6v-6h-2a7 7 0 0 1-7-7v-9a7 7 0 0 1 7-7Z" stroke="currentColor" stroke-width="2"/><path d="M15 26h18M18 20h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></div>
-                <strong>Your conversation starts here</strong>
-                <span>Start a call to see live messages from Callio and the caller.</span>
+                <strong data-i18n="transcript.emptyTitle">Your conversation starts here</strong>
+                <span data-i18n="transcript.emptyDescription">Start a call to see live messages from Callio and the caller.</span>
               </div>
             </div>
-            <p id="transcript-status" class="transcript-meta" role="status">No conversation yet</p>
+            <p id="transcript-status" class="transcript-meta" role="status" data-i18n="transcript.noConversation">No conversation yet</p>
             <div id="handoff-controls" class="handoff-controls" hidden>
-              <strong>Handoff requested</strong>
-              <p class="helper">This is a simulated transfer. Choose how to respond.</p>
+              <strong data-i18n="handoff.requested">Handoff requested</strong>
+              <p class="helper" data-i18n="handoff.pendingHelp">This is a simulated transfer. Choose how to respond.</p>
               <div class="handoff-actions">
-                <button id="call-accept" type="button">Accept</button>
-                <button id="call-decline" type="button">Decline</button>
-                <button id="call-no-answer" type="button">No answer</button>
+                <button id="call-accept" type="button" data-i18n="handoff.accept">Accept</button>
+                <button id="call-decline" type="button" data-i18n="handoff.decline">Decline</button>
+                <button id="call-no-answer" type="button" data-i18n="handoff.noAnswer">No answer</button>
               </div>
             </div>
             <p id="call-feedback" class="call-feedback" role="status"></p>
-            <p class="transcript-note">Transcripts may be imperfect and remain in memory until your next call or page refresh.</p>
+            <p class="transcript-note" data-i18n="transcript.disclaimer">Transcripts may be imperfect and remain in memory until your next call or page refresh.</p>
           </section>
         </div>
 
         <section id="call-summary" class="panel summary-panel" hidden aria-labelledby="summary-heading">
-          <div class="panel-heading"><div class="heading-with-step"><span class="step">03</span><div><p class="section-kicker">AFTER THE CALL</p><h2 id="summary-heading">Call summary</h2></div></div></div>
-          <p id="summary-status" role="status">Waiting for call completion…</p>
+          <div class="panel-heading"><div class="heading-with-step"><span class="step">03</span><div><p class="section-kicker" data-i18n="summary.section">AFTER THE CALL</p><h2 id="summary-heading" data-i18n="summary.title">Call summary</h2></div></div></div>
+          <p id="summary-status" role="status" data-i18n="summary.waiting">Waiting for call completion…</p>
           <div id="summary-details" hidden>
             <dl class="summary-grid">
-              <div><dt>Caller</dt><dd id="summary-caller"></dd></div>
-              <div><dt>Reason</dt><dd id="summary-reason"></dd></div>
-              <div><dt>Urgency</dt><dd id="summary-urgency"></dd></div>
-              <div><dt>Handoff requested</dt><dd id="summary-handoff"></dd></div>
+              <div><dt data-i18n="fields.caller">Caller</dt><dd id="summary-caller"></dd></div>
+              <div><dt data-i18n="fields.reason">Reason</dt><dd id="summary-reason"></dd></div>
+              <div><dt data-i18n="fields.urgency">Urgency</dt><dd id="summary-urgency"></dd></div>
+              <div><dt data-i18n="handoff.requested">Handoff requested</dt><dd id="summary-handoff"></dd></div>
             </dl>
             <p id="summary-text"></p>
-            <h3>Follow-up actions</h3><ul id="summary-actions"></ul>
+            <h3 data-i18n="fields.followUpActions">Follow-up actions</h3><ul id="summary-actions"></ul>
           </div>
         </section>
 
         <details class="advanced">
-          <summary><span class="advanced-title"><span class="advanced-icon" aria-hidden="true">⌘</span><span><strong>Advanced tools</strong><small>Audio diagnostics and WebSocket events</small></span></span><span class="chevron" aria-hidden="true"></span></summary>
+          <summary><span class="advanced-title"><span class="advanced-icon" aria-hidden="true">⌘</span><span><strong data-i18n="advanced.title">Advanced tools</strong><small data-i18n="advanced.subtitle">Audio diagnostics and WebSocket events</small></span></span><span class="chevron" aria-hidden="true"></span></summary>
           <div class="advanced-body">
             <section class="advanced-section" aria-labelledby="advanced-diagnostics-heading">
-              <h3 id="advanced-diagnostics-heading">Diagnostics</h3>
-              <p class="helper">Audio and connection counters for this call. Hover over the info icons, or tap them on touch devices, to see explanations.</p>
-              <section class="diagnostic-group" aria-label="Microphone metrics">
-                <h4>Microphone</h4>
+              <h3 id="advanced-diagnostics-heading" data-i18n="diagnostics.title">Diagnostics</h3>
+              <p class="helper" data-i18n="diagnostics.help">Audio and connection counters for this call. Hover over the info icons, or tap them on touch devices, to see explanations.</p>
+              <section class="diagnostic-group" aria-label="Microphone metrics" data-i18n-aria-label="diagnostics.microphone.title">
+                <h4 data-i18n="mic.title">Microphone</h4>
                 <div class="counters">
-                  <div class="metric-card"><div class="metric-label"><span>Microphone chunks captured</span><button type="button" class="metric-help-trigger" aria-label="Explain Microphone chunks captured" aria-expanded="false" data-help="Audio chunks captured from your microphone before any silence filtering."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="mic-chunks">0</output></div>
-                  <div class="metric-card"><div class="metric-label"><span>Silent microphone audio filtered</span><button type="button" class="metric-help-trigger" aria-label="Explain Silent microphone audio filtered" aria-expanded="false" data-help="Microphone chunks deliberately skipped so the server does not receive unnecessary silence."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ws-filtered">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span data-i18n="diagnostics.micChunks.title">Microphone chunks captured</span><button type="button" class="metric-help-trigger" aria-label="Explain Microphone chunks captured" data-i18n-aria-label="diagnostics.micChunks.explain" aria-expanded="false" data-help="Audio chunks captured from your microphone before any silence filtering." data-i18n-data-help="diagnostics.micChunks.help"><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="mic-chunks">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span data-i18n="diagnostics.silenceFiltered.title">Silent microphone audio filtered</span><button type="button" class="metric-help-trigger" aria-label="Explain Silent microphone audio filtered" data-i18n-aria-label="diagnostics.silenceFiltered.explain" aria-expanded="false" data-help="Microphone chunks deliberately skipped so the server does not receive unnecessary silence." data-i18n-data-help="diagnostics.silenceFiltered.help"><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ws-filtered">0</output></div>
                 </div>
               </section>
-              <section class="diagnostic-group" aria-label="Network metrics">
-                <h4>Network</h4>
+              <section class="diagnostic-group" aria-label="Network metrics" data-i18n-aria-label="diagnostics.network.label">
+                <h4 data-i18n="diagnostics.network.title">Network</h4>
                 <div class="counters">
-                  <div class="metric-card"><div class="metric-label"><span>Audio chunks sent</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio chunks sent" aria-expanded="false" data-help="Microphone audio chunks successfully queued for WebSocket transmission. This does not guarantee delivery."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ws-sent">0</output></div>
-                  <div class="metric-card"><div class="metric-label"><span>Audio chunks received</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio chunks received" aria-expanded="false" data-help="Audio chunks received from the WebSocket server, before optional playback."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ws-received">0</output></div>
-                  <div class="metric-card"><div class="metric-label"><span>Audio chunks not sent</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio chunks not sent" aria-expanded="false" data-help="Microphone chunks that were rejected because the WebSocket was unavailable or its outgoing buffer was full."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ws-dropped">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span data-i18n="diagnostics.audioSent.title">Audio chunks sent</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio chunks sent" data-i18n-aria-label="diagnostics.audioSent.explain" aria-expanded="false" data-help="Microphone audio chunks successfully queued for WebSocket transmission. This does not guarantee delivery." data-i18n-data-help="diagnostics.audioSent.help"><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ws-sent">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span data-i18n="diagnostics.audioReceived.title">Audio chunks received</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio chunks received" data-i18n-aria-label="diagnostics.audioReceived.explain" aria-expanded="false" data-help="Audio chunks received from the WebSocket server, before optional playback." data-i18n-data-help="diagnostics.audioReceived.help"><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ws-received">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span data-i18n="diagnostics.audioDropped.title">Audio chunks not sent</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio chunks not sent" data-i18n-aria-label="diagnostics.audioDropped.explain" aria-expanded="false" data-help="Microphone chunks that were rejected because the WebSocket was unavailable or its outgoing buffer was full." data-i18n-data-help="diagnostics.audioDropped.help"><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ws-dropped">0</output></div>
                 </div>
               </section>
-              <section class="diagnostic-group" aria-label="Playback metrics">
-                <h4>Playback</h4>
+              <section class="diagnostic-group" aria-label="Playback metrics" data-i18n-aria-label="diagnostics.playback.label">
+                <h4 data-i18n="diagnostics.playback.title">Playback</h4>
                 <div class="counters">
-                  <div class="metric-card"><div class="metric-label"><span>Audio queued for playback</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio queued for playback" aria-expanded="false" data-help="Received audio chunks successfully scheduled for playback; not necessarily already heard."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="playback-scheduled">0</output></div>
-                  <div class="metric-card"><div class="metric-label"><span>Audio not queued for playback</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio not queued for playback" aria-expanded="false" data-help="Received audio chunks the player could not schedule. Audio intentionally cleared during interruption is not counted here."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="playback-dropped">0</output></div>
-                  <div class="metric-card"><div class="metric-label"><span>Silent AI audio chunks</span><button type="button" class="metric-help-trigger" aria-label="Explain Silent AI audio chunks" aria-expanded="false" data-help="Received AI audio chunks containing only zero samples, which may represent silence."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ai-silent-chunks">0</output></div>
-                  <div class="metric-card"><div class="metric-label"><span>Assistant interruptions</span><button type="button" class="metric-help-trigger" aria-label="Explain Assistant interruptions" aria-expanded="false" data-help="Times Callio's speech was interrupted so it could listen to the caller."><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ai-interruptions">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span data-i18n="diagnostics.playbackQueued.title">Audio queued for playback</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio queued for playback" data-i18n-aria-label="diagnostics.playbackQueued.explain" aria-expanded="false" data-help="Received audio chunks successfully scheduled for playback; not necessarily already heard." data-i18n-data-help="diagnostics.playbackQueued.help"><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="playback-scheduled">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span data-i18n="diagnostics.playbackDropped.title">Audio not queued for playback</span><button type="button" class="metric-help-trigger" aria-label="Explain Audio not queued for playback" data-i18n-aria-label="diagnostics.playbackDropped.explain" aria-expanded="false" data-help="Received audio chunks the player could not schedule. Audio intentionally cleared during interruption is not counted here." data-i18n-data-help="diagnostics.playbackDropped.help"><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="playback-dropped">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span data-i18n="diagnostics.aiSilent.title">Silent AI audio chunks</span><button type="button" class="metric-help-trigger" aria-label="Explain Silent AI audio chunks" data-i18n-aria-label="diagnostics.aiSilent.explain" aria-expanded="false" data-help="Received AI audio chunks containing only zero samples, which may represent silence." data-i18n-data-help="diagnostics.aiSilent.help"><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ai-silent-chunks">0</output></div>
+                  <div class="metric-card"><div class="metric-label"><span data-i18n="diagnostics.interruptions.title">Assistant interruptions</span><button type="button" class="metric-help-trigger" aria-label="Explain Assistant interruptions" data-i18n-aria-label="diagnostics.interruptions.explain" aria-expanded="false" data-help="Times Callio's speech was interrupted so it could listen to the caller." data-i18n-data-help="diagnostics.interruptions.help"><img class="metric-help-icon" src="/assets/info.webp" alt="" aria-hidden="true" width="18" height="18" /></button></div><output id="ai-interruptions">0</output></div>
                 </div>
               </section>
-              <label class="echo-option"><input id="echo-playback" type="checkbox" disabled /> Play echoed audio (headphones recommended)</label>
-              <p class="helper">Echo playback is available only in microphone test mode. Gemini replies play automatically.</p>
+              <label class="echo-option"><input id="echo-playback" type="checkbox" disabled /> <span data-i18n="diagnostics.echoPlayback.label">Play echoed audio (headphones recommended)</span></label>
+              <p class="helper" data-i18n="diagnostics.echoPlayback.help">Echo playback is available only in microphone test mode. Gemini replies play automatically.</p>
             </section>
             <section class="advanced-section" aria-labelledby="advanced-events-heading">
-              <h3 id="advanced-events-heading">WebSocket events</h3>
-              <p class="helper">Recent connection messages and audio frame sizes. Audio contents, transcripts and private caller details are not recorded here.</p>
+              <h3 id="advanced-events-heading" data-i18n="events.title">WebSocket events</h3>
+              <p class="helper" data-i18n="events.description">Recent connection messages and audio frame sizes. Audio contents, transcripts and private caller details are not recorded here.</p>
               <div class="event-controls">
-                <label>Direction
-                  <select id="event-direction"><option value="all">All</option><option value="in">Received</option><option value="out">Sent</option></select>
+                <label><span data-i18n="events.direction">Direction</span>
+                  <select id="event-direction"><option value="all" data-i18n="common.all">All</option><option value="in" data-i18n="events.received">Received</option><option value="out" data-i18n="events.sent">Sent</option></select>
                 </label>
-                <label>Message type
-                  <select id="event-kind"><option value="all">All</option><option value="json">Control events</option><option value="binary">Audio frames</option></select>
+                <label><span data-i18n="events.type">Message type</span>
+                  <select id="event-kind"><option value="all" data-i18n="common.all">All</option><option value="json" data-i18n="events.controls">Control events</option><option value="binary" data-i18n="events.audioFrames">Audio frames</option></select>
                 </label>
-                <button id="events-clear" class="text-button" type="button" disabled>Clear events</button>
+                <button id="events-clear" class="text-button" type="button" disabled data-i18n="events.clear">Clear events</button>
               </div>
-              <p id="events-count" class="event-count" aria-live="off">0 shown · 0 buffered (max 200)</p>
-              <ol id="event-list" class="event-list" aria-label="Recent WebSocket events" aria-live="off"></ol>
-              <p class="helper">Newest first · only the last 200 events are kept in memory · no audio payloads are saved.</p>
+              <p id="events-count" class="event-count" aria-live="off" data-i18n="events.countInitial">0 shown · 0 buffered (max 200)</p>
+              <ol id="event-list" class="event-list" aria-label="Recent WebSocket events" data-i18n-aria-label="events.recentLabel" aria-live="off"></ol>
+              <p class="helper" data-i18n="events.disclaimer">Newest first · only the last 200 events are kept in memory · no audio payloads are saved.</p>
             </section>
             <section class="advanced-section" aria-labelledby="advanced-configuration-heading">
-              <h3 id="advanced-configuration-heading">Configuration</h3>
+              <h3 id="advanced-configuration-heading" data-i18n="config.title">Configuration</h3>
               <dl class="advanced-config">
-                <div><dt>WebSocket status</dt><dd id="ws-status" role="status">Disconnected</dd></div>
-                <div><dt>Selected mode</dt><dd id="advanced-mode">Gemini Live</dd></div>
-                <div><dt>Provider</dt><dd id="advanced-provider">Gemini Live</dd></div>
-                <div><dt>WebSocket endpoint</dt><dd id="advanced-endpoint">/ws/live</dd></div>
-                <div><dt>Microphone format</dt><dd>PCM16 · 16 kHz · mono · 20 ms</dd></div>
-                <div><dt>Received audio format</dt><dd id="advanced-received-format">PCM16 · 24 kHz · mono</dd></div>
+                <div><dt data-i18n="config.websocket">WebSocket status</dt><dd id="ws-status" role="status" data-i18n="socket.disconnected">Disconnected</dd></div>
+                <div><dt data-i18n="config.selectedMode">Selected mode</dt><dd id="advanced-mode">Gemini Live</dd></div>
+                <div><dt data-i18n="config.provider">Provider</dt><dd id="advanced-provider">Gemini Live</dd></div>
+                <div><dt data-i18n="config.endpoint">WebSocket endpoint</dt><dd id="advanced-endpoint">/ws/live</dd></div>
+                <div><dt data-i18n="config.microphoneFormat">Microphone format</dt><dd>PCM16 · 16 kHz · mono · 20 ms</dd></div>
+                <div><dt data-i18n="config.receivedFormat">Received audio format</dt><dd id="advanced-received-format">PCM16 · 24 kHz · mono</dd></div>
               </dl>
-              <p class="helper">Only nonsecret, locally available configuration is displayed.</p>
+              <p class="helper" data-i18n="config.disclaimer">Only nonsecret, locally available configuration is displayed.</p>
             </section>
           </div>
         </details>
         <div id="metric-help-popover" class="metric-help-popover" role="tooltip" popover="manual"></div>
       </main>
-      <footer><span>Callio · Local proof of concept</span><span>Browser simulation only · No real phone connection</span></footer>
+      <footer><span data-i18n="footer.title">Callio · Local proof of concept</span><span data-i18n="footer.subtitle">Browser simulation only · No real phone connection</span></footer>
     </div>
   </body>
 </html>

@@ -18,18 +18,14 @@ const inputChunkBytes = 640 // PCM16 mono 16 kHz, 20 ms
 type Provider struct {
 	client *genai.Client
 	model  string
-	locale realtime.Locale
 }
 
-func New(ctx context.Context, apiKey, model string, locale realtime.Locale) (*Provider, error) {
+func New(ctx context.Context, apiKey, model string) (*Provider, error) {
 	if apiKey == "" {
 		return nil, errors.New("GEMINI_API_KEY is missing")
 	}
 	if model == "" {
 		return nil, errors.New("GEMINI_MODEL is missing")
-	}
-	if _, err := realtime.NewLocale(locale.String()); err != nil {
-		return nil, err
 	}
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  apiKey,
@@ -38,10 +34,11 @@ func New(ctx context.Context, apiKey, model string, locale realtime.Locale) (*Pr
 	if err != nil {
 		return nil, fmt.Errorf("initialize Gemini client: %w", err)
 	}
-	return &Provider{client: client, model: model, locale: locale}, nil
+	return &Provider{client: client, model: model}, nil
 }
 
-func (p *Provider) Open(ctx context.Context) (realtime.VoiceSession, error) {
+func (p *Provider) Open(ctx context.Context, locale realtime.Locale) (realtime.VoiceSession, error) {
+	if _, err := realtime.NewLocale(locale.String()); err != nil { return nil, err }
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -55,7 +52,7 @@ func (p *Provider) Open(ctx context.Context) (realtime.VoiceSession, error) {
 	if err := live.SendClientContent(genai.LiveClientContentInput{
 		Turns: []*genai.Content{{
 			Role:  "user",
-			Parts: []*genai.Part{{Text: realtime.OpeningPrompt(p.locale)}},
+			Parts: []*genai.Part{{Text: realtime.OpeningPrompt(locale)}},
 		}},
 	}); err != nil {
 		_ = live.Close()

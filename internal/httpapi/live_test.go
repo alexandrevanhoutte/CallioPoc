@@ -21,9 +21,10 @@ import (
 type fakeVoiceProvider struct {
 	mu sync.Mutex
 	session *fakeVoiceSession
+	locale realtime.Locale
 }
 
-func (p *fakeVoiceProvider) Open(_ context.Context) (realtime.VoiceSession, error) {
+func (p *fakeVoiceProvider) Open(_ context.Context, locale realtime.Locale) (realtime.VoiceSession, error) {
 	s := &fakeVoiceSession{
 		events: make(chan realtime.Event, 8),
 		streamEnds: make(chan struct{}, 8),
@@ -31,6 +32,7 @@ func (p *fakeVoiceProvider) Open(_ context.Context) (realtime.VoiceSession, erro
 	}
 	p.mu.Lock()
 	p.session = s
+	p.locale = locale
 	p.mu.Unlock()
 	return s, nil
 }
@@ -85,11 +87,47 @@ func (s *fakeVoiceSession) Close() error {
 	return nil
 }
 
+func TestLivePerCallLocaleAndFallback(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	provider := &fakeVoiceProvider{}
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, realtime.LocaleKorean))
+	defer server.Close()
+	base := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/live"
+
+	for _, tc := range []struct { query string; want realtime.Locale }{
+		{"", realtime.LocaleKorean},
+		{"?locale=fr-FR", realtime.LocaleFrench},
+		{"?locale=en-US", realtime.LocaleEnglish},
+		{"?locale=ko-KR", realtime.LocaleKorean},
+	} {
+		conn, _, err := websocket.Dial(ctx, base+tc.query, nil)
+		if err != nil { t.Fatalf("dial %s: %v", tc.query, err) }
+		// The WebSocket handshake precedes provider.Open; an audio round-trip
+		// makes the provider initialization observable before reading the locale.
+		if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 640)); err != nil { t.Fatal(err) }
+		if _, _, err := conn.Read(ctx); err != nil { t.Fatal(err) }
+		provider.mu.Lock()
+		got := provider.locale
+		provider.mu.Unlock()
+		if got != tc.want { t.Errorf("locale %q = %s, want %s", tc.query, got, tc.want) }
+		conn.CloseNow()
+	}
+	for _, query := range []string{"?locale=de-DE", "?locale=", "?locale=fr-FR&locale=ko-KR"} {
+		res, err := http.Get(server.URL + "/ws/live" + query)
+		if err != nil { t.Fatal(err) }
+		res.Body.Close()
+		if res.StatusCode != http.StatusBadRequest {
+			t.Errorf("invalid %q returned %d, want 400", query, res.StatusCode)
+		}
+	}
+}
+
 func TestLiveBridge(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, 0))
 	defer server.Close()
 
 	uri := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/live"
@@ -132,7 +170,7 @@ func TestInterruptedTurnDoesNotForwardStaleAudio(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, 0))
 	defer server.Close()
 
 	uri := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/live"
@@ -187,7 +225,7 @@ func TestLiveTranscriptEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, 0))
 	defer server.Close()
 
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
@@ -237,7 +275,7 @@ func TestLiveTranscriptEvent(t *testing.T) {
 }
 
 func TestLiveWithoutProvider(t *testing.T) {
-	server := httptest.NewServer(NewRouter(context.Background(), fstest.MapFS{}, nil, nil))
+	server := httptest.NewServer(NewRouter(context.Background(), fstest.MapFS{}, nil, nil, 0))
 	defer server.Close()
 	response, err := http.Get(server.URL + "/ws/live")
 	if err != nil {
@@ -253,7 +291,7 @@ func TestLiveHandoffEvent(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, 0))
 	defer server.Close()
 
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
@@ -321,7 +359,7 @@ func TestLiveLifecycleControl(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			provider := &fakeVoiceProvider{}
-			server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+			server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, 0))
 			defer server.Close()
 			conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
 			if err != nil { t.Fatal(err) }
@@ -393,7 +431,7 @@ func TestInvalidLifecycleCommandDoesNotChangeState(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, 0))
 	defer server.Close()
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
 	if err != nil { t.Fatal(err) }
@@ -418,7 +456,7 @@ func TestLiveNaturalCompletionWaitsForPlayback(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, 0))
 	defer server.Close()
 
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
@@ -472,7 +510,7 @@ func TestPlaybackAcknowledgementRequiresFinishing(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, 0))
 	defer server.Close()
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
 	if err != nil { t.Fatal(err) }
@@ -526,7 +564,7 @@ func TestLiveFarewellInterruptionAllowsAnotherEnd(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, 0))
 	defer server.Close()
 
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
@@ -589,7 +627,7 @@ func TestLiveSessionRejectsDuplicateCompletionRequests(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, 0))
 	defer server.Close()
 
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
@@ -650,9 +688,9 @@ func TestCallSummarySentAfterCompleted(t *testing.T) {
 	defer cancel()
 	provider := &fakeVoiceProvider{}
 	summarizer := &fakeSummarizer{}
-	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, summarizer))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, summarizer, realtime.LocaleFrench))
 	defer server.Close()
-	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
+	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live?locale=en-US", nil)
 	if err != nil { t.Fatal(err) }
 	defer conn.CloseNow()
 	if err := conn.Write(ctx, websocket.MessageBinary, make([]byte, 640)); err != nil { t.Fatal(err) }
@@ -696,7 +734,7 @@ func TestCallSummarySentAfterCompleted(t *testing.T) {
 	input := summarizer.input
 	summarizer.mu.Unlock()
 	if len(input.Transcript) != 1 || input.Transcript[0].Text != "I want to sell shoes" ||
-		input.Handoff == nil || input.EndReason != call.EndManual {
+		input.Handoff == nil || input.EndReason != call.EndManual || input.Locale != realtime.LocaleEnglish {
 		t.Fatalf("summarizer input incorrect: %+v", input)
 	}
 }
@@ -707,7 +745,7 @@ func TestSummaryFailureDoesNotBlockCompletion(t *testing.T) {
 	provider := &fakeVoiceProvider{}
 	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, &fakeSummarizer{
 		err: errors.New("model offline"),
-	}))
+	}, 0))
 	defer server.Close()
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
 	if err != nil { t.Fatal(err) }
@@ -728,7 +766,7 @@ func TestLiveAudioStreamEnd(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, 0))
 	defer server.Close()
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
 	if err != nil { t.Fatal(err) }
@@ -777,7 +815,7 @@ func TestAudioStreamEndIgnoredWithoutPriorAudio(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, 0))
 	defer server.Close()
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
 	if err != nil { t.Fatal(err) }
@@ -802,7 +840,7 @@ func TestAudioStreamEndRejectedDuringHumanTakeover(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	provider := &fakeVoiceProvider{}
-	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil))
+	server := httptest.NewServer(NewRouter(ctx, fstest.MapFS{}, provider, nil, 0))
 	defer server.Close()
 	conn, _, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/ws/live", nil)
 	if err != nil { t.Fatal(err) }

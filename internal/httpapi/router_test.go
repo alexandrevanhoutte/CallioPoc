@@ -9,13 +9,14 @@ import (
 	"testing/fstest"
 
 	"github.com/alexandrevanhoutte/CallioPoc/internal/httpapi"
+	"github.com/alexandrevanhoutte/CallioPoc/internal/realtime"
 )
 
 func TestRouter(t *testing.T) {
 	t.Parallel()
 
 	files := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<h1>CallioPoc</h1>")}}
-	router := httpapi.NewRouter(context.Background(), files, nil, nil)
+	router := httpapi.NewRouter(context.Background(), files, nil, nil, realtime.LocaleFrench)
 
 	for _, tc := range []struct {
 		name   string
@@ -26,6 +27,7 @@ func TestRouter(t *testing.T) {
 	}{
 		{name: "health", method: http.MethodGet, path: "/health", status: http.StatusOK, body: "{\"status\":\"ok\"}"},
 		{name: "capabilities with no provider", method: http.MethodGet, path: "/capabilities", status: http.StatusOK, body: "\"live_configured\":false"},
+		{name: "capabilities expose fallback locale", method: http.MethodGet, path: "/capabilities", status: http.StatusOK, body: "\"greeting_locale\":\"fr-FR\""},
 		{name: "capabilities method not allowed", method: http.MethodPost, path: "/capabilities", status: http.StatusMethodNotAllowed},
 		{name: "health method not allowed", method: http.MethodPost, path: "/health", status: http.StatusMethodNotAllowed},
 		{name: "live missing provider", method: http.MethodGet, path: "/ws/live", status: http.StatusServiceUnavailable},

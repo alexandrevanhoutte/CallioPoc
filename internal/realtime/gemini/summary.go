@@ -57,7 +57,7 @@ func (s *Summarizer) Summarize(ctx context.Context, input call.SummaryInput) (ca
 		return call.Summary{
 			Urgency: "unknown", FollowUpActions: []string{},
 			HandoffRequested: input.Handoff != nil,
-			Text: "Aucune transcription finalisée disponible pour résumer cet appel.",
+			Text: realtime.EmptyTranscriptSummary(input.Locale),
 		}, nil
 	}
 	var handoff any
@@ -75,7 +75,7 @@ func (s *Summarizer) Summarize(ctx context.Context, input call.SummaryInput) (ca
 	if err != nil {
 		return call.Summary{}, fmt.Errorf("encode summary input: %w", err)
 	}
-	prompt := realtime.SummaryPrompt(contextJSON)
+	prompt := realtime.SummaryPrompt(contextJSON, input.Locale)
 
 	// Retry one transient upstream 5xx error. The total budget is enforced
 	// by the caller, including any backoff and the second attempt.

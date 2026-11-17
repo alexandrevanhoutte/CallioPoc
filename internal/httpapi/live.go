@@ -40,6 +40,7 @@ type liveSession struct {
 	conn      *websocket.Conn
 	voice     realtime.VoiceSession
 	lifecycle *call.Lifecycle
+	locale    realtime.Locale
 	summarizer call.Summarizer
 	l          logging.Logger
 	transcript realtime.Transcript
@@ -59,12 +60,25 @@ type liveSession struct {
 
 // The live protocol uploads 16 kHz mono PCM16 (640 bytes) and receives
 // 24 kHz PCM16 audio plus JSON control/transcript messages.
-func audioLive(appCtx context.Context, provider realtime.VoiceProvider, summarizer call.Summarizer) http.HandlerFunc {
+func audioLive(appCtx context.Context, provider realtime.VoiceProvider, summarizer call.Summarizer, defaultLocale realtime.Locale) http.HandlerFunc {
 	logger := logging.For("httpapi.live")
 	return func(w http.ResponseWriter, r *http.Request) {
 		if provider == nil {
 			http.Error(w, "Live provider is not configured", http.StatusServiceUnavailable)
 			return
+		}
+		locale := defaultLocale
+		if values, specified := r.URL.Query()["locale"]; specified {
+			if len(values) != 1 {
+				http.Error(w, "exactly one locale is required", http.StatusBadRequest)
+				return
+			}
+			var err error
+			locale, err = realtime.NewLocale(values[0])
+			if err != nil {
+				http.Error(w, "unsupported locale", http.StatusBadRequest)
+				return
+			}
 		}
 		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {
@@ -78,7 +92,7 @@ func audioLive(appCtx context.Context, provider realtime.VoiceProvider, summariz
 		stopShutdown := context.AfterFunc(appCtx, cancel)
 		defer stopShutdown()
 
-		voice, err := provider.Open(ctx)
+		voice, err := provider.Open(ctx, locale)
 		if err != nil {
 			_ = conn.Close(websocket.StatusInternalError, "AI session could not start")
 			logger.Warn("live session opening failed", "error", err)
@@ -99,6 +113,7 @@ func audioLive(appCtx context.Context, provider realtime.VoiceProvider, summariz
 			conn:         conn,
 			voice:        voice,
 			lifecycle:    call.NewLifecycle(call.MockHandoff{}),
+			locale:       locale,
 			summarizer:   summarizer,
 			l:            logger,
 			lastActivity: time.Now(),
@@ -423,6 +438,7 @@ func (s *liveSession) sendSummary(ctx context.Context, reason call.EndReason) er
 		Transcript: s.transcript.Finalized(),
 		Handoff: s.handoff,
 		EndReason: reason,
+		Locale: s.locale,
 	}
 	s.mu.Unlock()
 	if s.summarizer == nil {

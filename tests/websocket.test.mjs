@@ -146,3 +146,25 @@ test("a failing diagnostic callback cannot interrupt the audio socket", async ()
   ws.receive(new ArrayBuffer(640));
   connection.close();
 });
+
+test("per-call locale is only added to live URL, without changing control frames", async () => {
+  const connection = new AudioSocket({
+    endpoint: "/ws/live", locale: "ko-KR", onChunk() {}, onDisconnect() {},
+  });
+  const connected = connection.connect();
+  const ws = FakeWebSocket.instances.at(-1);
+  assert.equal(ws.url, "ws://localhost:8080/ws/live?locale=ko-KR");
+  ws.open();
+  await connected;
+  assert.equal(connection.sendControl("end_call"), true);
+  assert.deepEqual(JSON.parse(ws.sent.at(-1)), { type: "end_call" });
+  connection.close();
+
+  const echo = new AudioSocket({ endpoint: "/ws/audio", locale: "fr-FR", onChunk() {}, onDisconnect() {} });
+  const next = echo.connect();
+  const echoSocket = FakeWebSocket.instances.at(-1);
+  assert.equal(echoSocket.url, "ws://localhost:8080/ws/audio");
+  echoSocket.open();
+  await next;
+  echo.close();
+});

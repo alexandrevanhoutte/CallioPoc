@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { EventInspector, MAX_TRAFFIC_EVENTS, TrafficLog } from "../web/event-inspector.js";
+import { setLocale } from "../web/i18n.js";
+import { loadTestLocales } from "./i18n-fixture.mjs";
+
+// Existing view tests assert English copy explicitly; the app defaults to French.
+await loadTestLocales();
+setLocale("en-US", { persist: false });
 
 const frame = (direction = "in", kind = "binary", type = "", size = 640) =>
   ({ timestamp: 1763180000000, direction, kind, type, size });

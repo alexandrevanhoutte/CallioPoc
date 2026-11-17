@@ -3,8 +3,9 @@
 const MAX_BUFFERED_BYTES = 32 * 1024;
 
 export class AudioSocket {
-  constructor({ endpoint = "/ws/audio", onChunk, onEvent = () => {}, onDisconnect, onTraffic = () => {} }) {
+  constructor({ endpoint = "/ws/audio", locale = null, onChunk, onEvent = () => {}, onDisconnect, onTraffic = () => {} }) {
     this.endpoint = endpoint;
+    this.locale = locale;
     this.onChunk = onChunk;
     this.onEvent = onEvent;
     this.onDisconnect = onDisconnect;
@@ -21,7 +22,9 @@ export class AudioSocket {
   connect() {
     if (this.socket) throw new Error("WebSocket is already connected.");
     const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${scheme}//${location.host}${this.endpoint}`);
+    const query = this.endpoint === "/ws/live" && this.locale
+      ? "?locale=" + encodeURIComponent(this.locale) : "";
+    const socket = new WebSocket(`${scheme}//${location.host}${this.endpoint}${query}`);
     this.socket = socket;
     socket.binaryType = "arraybuffer";
 

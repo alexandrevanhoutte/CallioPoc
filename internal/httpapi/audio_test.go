@@ -15,7 +15,7 @@ import (
 
 func echoServer(t *testing.T, ctx context.Context) string {
 	t.Helper()
-	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, nil, nil))
+	server := httptest.NewServer(httpapi.NewRouter(ctx, fstest.MapFS{}, nil, nil, 0))
 	t.Cleanup(server.Close)
 	return "ws" + strings.TrimPrefix(server.URL, "http") + "/ws/audio"
 }

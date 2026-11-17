@@ -12,6 +12,7 @@ type SummaryInput struct {
 	Transcript []realtime.TranscriptSegment
 	Handoff    *realtime.HandoffRequest
 	EndReason  EndReason
+	Locale     realtime.Locale
 }
 
 // Summary is provider-independent and suitable for future CI-10 persistence.

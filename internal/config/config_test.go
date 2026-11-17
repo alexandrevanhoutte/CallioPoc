@@ -25,7 +25,6 @@ func TestLoad(t *testing.T) {
 			t.Setenv("GEMINI_API_KEY", "")
 			t.Setenv("GEMINI_MODEL", "")
 			t.Setenv("GEMINI_SUMMARY_MODEL", "")
-			t.Setenv("CALL_GREETING_LOCALE", "")
 
 			cfg, err := config.Load()
 			if (err != nil) != tc.wantErr {
@@ -82,37 +81,9 @@ func TestRejectUnknownProvider(t *testing.T) {
 	}
 }
 
-func TestGreetingLocaleConfig(t *testing.T) {
-	t.Setenv("PORT", "8080")
-	t.Setenv("AI_PROVIDER", "gemini")
-	for _, locale := range []string{"", "fr-FR", "ko-KR", "en-US", "es-ES"} {
-		t.Run(locale, func(t *testing.T) {
-			t.Setenv("CALL_GREETING_LOCALE", locale)
-			cfg, err := config.Load()
-			if locale == "es-ES" {
-				if err == nil {
-					t.Fatal("unsupported locale must fail")
-				}
-				return
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			want := locale
-			if want == "" {
-				want = "fr-FR"
-			}
-			if cfg.GreetingLocale.String() != want {
-				t.Fatalf("got %q, want %q", cfg.GreetingLocale, want)
-			}
-		})
-	}
-}
-
 func TestSummaryModelOverride(t *testing.T) {
 	t.Setenv("PORT", "8080")
 	t.Setenv("AI_PROVIDER", "gemini")
-	t.Setenv("CALL_GREETING_LOCALE", "fr-FR")
 	t.Setenv("GEMINI_SUMMARY_MODEL", "gemini-3.5-flash-lite-lite")
 	cfg, err := config.Load()
 	if err != nil {

@@ -75,7 +75,7 @@ func TestLocaleInvalidString(t *testing.T) {
 
 func TestSummaryPrompt(t *testing.T) {
 	data := []byte(`{"transcript":[{"speaker":"CALLER","text":"Bonjour"}]}`)
-	prompt := realtime.SummaryPrompt(data)
+	prompt := realtime.SummaryPrompt(data, realtime.LocaleFrench)
 	for _, required := range []string{
 		"concise, factual FRENCH",
 		"Return ONLY valid JSON",
@@ -89,5 +89,15 @@ func TestSummaryPrompt(t *testing.T) {
 	}
 	if strings.Count(prompt, string(data)) != 1 {
 		t.Fatal("summary context must be included exactly once")
+	}
+	for _, tc := range []struct { locale realtime.Locale; language string }{
+		{realtime.LocaleFrench, "FRENCH"}, {realtime.LocaleEnglish, "ENGLISH"}, {realtime.LocaleKorean, "KOREAN"},
+	} {
+		got := realtime.SummaryPrompt(data, tc.locale)
+		if !strings.Contains(got, "factual " + tc.language) || !strings.Contains(got, "Never translate JSON keys") {
+			t.Fatalf("incorrect summary language for %s: %s", tc.locale, got)
+		}
+		if strings.Count(got, string(data)) != 1 { t.Fatalf("summary context duplicated for %s", tc.locale) }
+		if realtime.EmptyTranscriptSummary(tc.locale) == "" { t.Fatalf("missing no-transcript message for %s", tc.locale) }
 	}
 }
